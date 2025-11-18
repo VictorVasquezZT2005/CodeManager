@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "347308295176",
+    "project_id": "codemanager-2c526",
+    "storage_bucket": "codemanager-2c526.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:347308295176:android:5d70574fb980169c34fdbd",
+        "android_client_info": {
+          "package_name": "com.example.codemanager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA91SF-kDEPTsLqBXAOzMWBU-94WbZovn0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
