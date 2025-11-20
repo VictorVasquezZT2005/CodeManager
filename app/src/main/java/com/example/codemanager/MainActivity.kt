@@ -19,10 +19,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.codemanager.data.repository.AuthRepository
+import com.example.codemanager.data.repository.CodeRepository
 import com.example.codemanager.ui.auth.AuthViewModel
 import com.example.codemanager.ui.auth.AuthViewModelFactory
 import com.example.codemanager.ui.auth.LoginScreen
 import com.example.codemanager.ui.codes.CodesScreen
+import com.example.codemanager.ui.codes.CodesViewModel
+import com.example.codemanager.ui.codes.CodesViewModelFactory
 import com.example.codemanager.ui.components.NavBar
 import com.example.codemanager.ui.dashboard.DashboardScreen
 import com.example.codemanager.ui.groups.GroupsScreen
@@ -34,6 +37,7 @@ import com.example.codemanager.ui.theme.CodeManagerTheme
 class MainActivity : ComponentActivity() {
 
     private val authRepository by lazy { AuthRepository() }
+    private val codeRepository by lazy { CodeRepository() }
     private val authViewModel: AuthViewModel by viewModels {
         AuthViewModelFactory(authRepository)
     }
@@ -44,7 +48,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             CodeManagerApp(
                 authViewModel = authViewModel,
-                authRepository = authRepository
+                authRepository = authRepository,
+                codeRepository = codeRepository
             )
         }
     }
@@ -53,7 +58,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CodeManagerApp(
     authViewModel: AuthViewModel,
-    authRepository: AuthRepository
+    authRepository: AuthRepository,
+    codeRepository: CodeRepository
 ) {
     val uiState by authViewModel.uiState.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
@@ -94,7 +100,11 @@ fun CodeManagerApp(
                             )
                         }
                         composable("codes") {
-                            CodesScreen()
+                            // Pasar el codeRepository para crear el CodesViewModel
+                            val codesViewModel: CodesViewModel = viewModel(
+                                factory = CodesViewModelFactory(codeRepository)
+                            )
+                            CodesScreen(viewModel = codesViewModel)
                         }
                         composable("groups") {
                             GroupsScreen()
