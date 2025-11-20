@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -25,8 +26,9 @@ import com.example.codemanager.ui.codes.CodesScreen
 import com.example.codemanager.ui.components.NavBar
 import com.example.codemanager.ui.dashboard.DashboardScreen
 import com.example.codemanager.ui.groups.GroupsScreen
-import com.example.codemanager.ui.warehouses.WarehousesScreen // Cambiado el import
+import com.example.codemanager.ui.warehouses.WarehousesScreen
 import com.example.codemanager.ui.users.UsersScreen
+import com.example.codemanager.ui.users.UsersViewModelFactory
 import com.example.codemanager.ui.theme.CodeManagerTheme
 
 class MainActivity : ComponentActivity() {
@@ -54,6 +56,7 @@ fun CodeManagerApp(
     authRepository: AuthRepository
 ) {
     val uiState by authViewModel.uiState.collectAsState()
+    val currentUser by authViewModel.currentUser.collectAsState()
     val navController = rememberNavController()
 
     // Verificar si ya hay un usuario logueado al iniciar la app
@@ -72,10 +75,12 @@ fun CodeManagerApp(
                 // Layout principal con NavBar
                 Scaffold(
                     bottomBar = {
-                        NavBar(navController = navController)
+                        NavBar(
+                            navController = navController,
+                            authViewModel = authViewModel
+                        )
                     }
                 ) { paddingValues ->
-                    // Navegación integrada directamente (sin AppNavigation.kt)
                     NavHost(
                         navController = navController,
                         startDestination = "dashboard",
@@ -84,8 +89,7 @@ fun CodeManagerApp(
                         composable("dashboard") {
                             DashboardScreen(
                                 onLogout = {
-                                    authRepository.signOut()
-                                    authViewModel.resetAuthState()
+                                    authViewModel.signOut()
                                 }
                             )
                         }
@@ -95,11 +99,15 @@ fun CodeManagerApp(
                         composable("groups") {
                             GroupsScreen()
                         }
-                        composable("warehouses") { // Cambiado de "shelves" a "warehouses"
-                            WarehousesScreen() // Cambiado de ShelvesScreen() a WarehousesScreen()
+                        composable("warehouses") {
+                            WarehousesScreen()
                         }
                         composable("users") {
-                            UsersScreen()
+                            // Pasar el authRepository para crear el UsersViewModel
+                            UsersScreen(
+                                authRepository = authRepository,
+                                authViewModel = authViewModel
+                            )
                         }
                     }
                 }

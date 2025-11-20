@@ -2,6 +2,7 @@ package com.example.codemanager.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.codemanager.data.model.User
 import com.example.codemanager.data.repository.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +15,14 @@ class AuthViewModel(
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+    // Cambia esto de MutableStateFlow a StateFlow para exposición pública
+    private val _currentUser = MutableStateFlow<User?>(null)
+    val currentUser: StateFlow<User?> = _currentUser.asStateFlow()  // ✅ Cambiado a StateFlow
+
+    init {
+        loadCurrentUser()
+    }
 
     fun onEmailChange(email: String) {
         _uiState.value = _uiState.value.copy(
@@ -59,6 +68,7 @@ class AuthViewModel(
             try {
                 val result = authRepository.signIn(currentState.email, currentState.password)
                 if (result.isSuccess) {
+                    loadCurrentUser()
                     _uiState.value = _uiState.value.copy(
                         isAuthenticated = true,
                         isLoading = false,
@@ -79,14 +89,31 @@ class AuthViewModel(
         }
     }
 
+    private fun loadCurrentUser() {
+        viewModelScope.launch {
+            _currentUser.value = authRepository.getCurrentUser()
+        }
+    }
+
     fun setAuthenticated(authenticated: Boolean) {
         _uiState.value = _uiState.value.copy(
             isAuthenticated = authenticated
         )
+        if (authenticated) {
+            loadCurrentUser()
+        } else {
+            _currentUser.value = null
+        }
     }
 
     fun resetAuthState() {
         _uiState.value = LoginUiState()
+        _currentUser.value = null
+    }
+
+    fun signOut() {
+        authRepository.signOut()
+        resetAuthState()
     }
 
     private fun isValidEmail(email: String): Boolean {
