@@ -89,32 +89,30 @@ fun CodesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botón para generar nuevo código
-            if (selectedPrefix != "ALL") {
-                Button(
-                    onClick = {
-                        showDescriptionDialog = true
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uiState.isLoading,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
+            // Botón para generar nuevo código (siempre visible ya que no hay "ALL")
+            Button(
+                onClick = {
+                    showDescriptionDialog = true
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                if (uiState.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
-                ) {
-                    if (uiState.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    } else {
-                        Icon(Icons.Default.Add, contentDescription = "Generar código")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Generar Código $selectedPrefix-XXXXX")
+                } else {
+                    Icon(Icons.Default.Add, contentDescription = "Generar código")
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Generar Código $selectedPrefix-XXXXX")
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Mostrar mensaje
             if (message != null) {
@@ -268,7 +266,7 @@ fun PrefixSelector(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("62", "70", "ALL").forEach { prefix ->
+            listOf("62", "70").forEach { prefix ->
                 FilterChip(
                     selected = selectedPrefix == prefix,
                     onClick = { onPrefixSelected(prefix) },
@@ -277,7 +275,6 @@ fun PrefixSelector(
                             text = when (prefix) {
                                 "62" -> "Compras Emergencia"
                                 "70" -> "Servicios"
-                                "ALL" -> "Todos"
                                 else -> prefix
                             }
                         )

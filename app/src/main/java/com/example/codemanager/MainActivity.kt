@@ -1,3 +1,4 @@
+// MainActivity.kt
 package com.example.codemanager
 
 import android.os.Bundle
@@ -20,6 +21,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.codemanager.data.repository.AuthRepository
 import com.example.codemanager.data.repository.CodeRepository
+import com.example.codemanager.data.repository.GroupRepository
+import com.example.codemanager.data.repository.WarehouseRepository
 import com.example.codemanager.ui.auth.AuthViewModel
 import com.example.codemanager.ui.auth.AuthViewModelFactory
 import com.example.codemanager.ui.auth.LoginScreen
@@ -29,7 +32,11 @@ import com.example.codemanager.ui.codes.CodesViewModelFactory
 import com.example.codemanager.ui.components.NavBar
 import com.example.codemanager.ui.dashboard.DashboardScreen
 import com.example.codemanager.ui.groups.GroupsScreen
+import com.example.codemanager.ui.groups.GroupsViewModel
+import com.example.codemanager.ui.groups.GroupsViewModelFactory
 import com.example.codemanager.ui.warehouses.WarehousesScreen
+import com.example.codemanager.ui.warehouses.WarehousesViewModel
+import com.example.codemanager.ui.warehouses.WarehousesViewModelFactory
 import com.example.codemanager.ui.users.UsersScreen
 import com.example.codemanager.ui.users.UsersViewModelFactory
 import com.example.codemanager.ui.theme.CodeManagerTheme
@@ -38,6 +45,9 @@ class MainActivity : ComponentActivity() {
 
     private val authRepository by lazy { AuthRepository() }
     private val codeRepository by lazy { CodeRepository() }
+    private val groupRepository by lazy { GroupRepository() }
+    private val warehouseRepository by lazy { WarehouseRepository() }
+
     private val authViewModel: AuthViewModel by viewModels {
         AuthViewModelFactory(authRepository)
     }
@@ -49,7 +59,9 @@ class MainActivity : ComponentActivity() {
             CodeManagerApp(
                 authViewModel = authViewModel,
                 authRepository = authRepository,
-                codeRepository = codeRepository
+                codeRepository = codeRepository,
+                groupRepository = groupRepository,
+                warehouseRepository = warehouseRepository
             )
         }
     }
@@ -59,7 +71,9 @@ class MainActivity : ComponentActivity() {
 fun CodeManagerApp(
     authViewModel: AuthViewModel,
     authRepository: AuthRepository,
-    codeRepository: CodeRepository
+    codeRepository: CodeRepository,
+    groupRepository: GroupRepository,
+    warehouseRepository: WarehouseRepository
 ) {
     val uiState by authViewModel.uiState.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
@@ -100,20 +114,24 @@ fun CodeManagerApp(
                             )
                         }
                         composable("codes") {
-                            // Pasar el codeRepository para crear el CodesViewModel
                             val codesViewModel: CodesViewModel = viewModel(
                                 factory = CodesViewModelFactory(codeRepository)
                             )
                             CodesScreen(viewModel = codesViewModel)
                         }
                         composable("groups") {
-                            GroupsScreen()
+                            val groupsViewModel: GroupsViewModel = viewModel(
+                                factory = GroupsViewModelFactory(groupRepository)
+                            )
+                            GroupsScreen(viewModel = groupsViewModel)
                         }
                         composable("warehouses") {
-                            WarehousesScreen()
+                            val warehousesViewModel: WarehousesViewModel = viewModel(
+                                factory = WarehousesViewModelFactory(warehouseRepository)
+                            )
+                            WarehousesScreen(viewModel = warehousesViewModel)
                         }
                         composable("users") {
-                            // Pasar el authRepository para crear el UsersViewModel
                             UsersScreen(
                                 authRepository = authRepository,
                                 authViewModel = authViewModel
