@@ -1,525 +1,806 @@
-// ui/warehouses/WarehousesScreen.kt
 package com.example.codemanager.ui.warehouses
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import kotlinx.coroutines.delay
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.codemanager.data.model.Warehouse
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WarehousesScreen(
-    viewModel: WarehousesViewModel
+    viewModel: WarehousesViewModel = viewModel(factory = WarehousesViewModelFactory())
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val selectedType by viewModel.selectedType.collectAsState()
-    val message by viewModel.message.collectAsState()
-
-    var showCreateDialog by remember { mutableStateOf(false) }
-
-    // Efectos
-    LaunchedEffect(Unit) {
-        viewModel.loadAllWarehouses()
-    }
-
-    LaunchedEffect(message) {
-        if (message != null) {
-            delay(5000)
-            viewModel.clearMessage()
-        }
-    }
 
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Almacenes") },
+                actions = {
+                    IconButton(onClick = { viewModel.showAddDialog() }) {
+                        Icon(Icons.Default.Add, "Agregar almacén")
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showCreateDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary
+                onClick = { viewModel.showAddDialog() }
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Crear almacén")
+                Icon(Icons.Default.Add, "Agregar")
             }
         }
-    ) { paddingValues ->
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
+                .padding(padding)
         ) {
-            // Header
-            Text(
-                text = "Almacenes",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
+            // Barra de búsqueda y filtros
+            SearchAndFiltersSection(
+                searchQuery = uiState.searchQuery,
+                selectedType = uiState.selectedType,
+                selectedLevel = uiState.selectedLevel,
+                onSearchChange = { viewModel.searchWarehouses(it) },
+                onTypeFilterChange = { viewModel.filterByType(it) },
+                onLevelFilterChange = { viewModel.filterByLevel(it) }
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Código: Estante (EE) - Nivel (NN)",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Selector de tipo
-            WarehouseTypeSelector(
-                selectedType = selectedType,
-                onTypeSelected = viewModel::setSelectedType
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Mensajes
-            if (message != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = when {
-                            message!!.contains("✅") -> MaterialTheme.colorScheme.primaryContainer
-                            message!!.contains("❌") -> MaterialTheme.colorScheme.errorContainer
-                            else -> MaterialTheme.colorScheme.surfaceVariant
-                        }
-                    )
+            // Lista de almacenes
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = message!!,
-                        modifier = Modifier.padding(16.dp)
-                    )
+                    CircularProgressIndicator()
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            // Contenido
-            when {
-                uiState.isLoading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Cargando almacenes...")
-                        }
-                    }
-                }
-                uiState.warehouses.isNotEmpty() -> {
-                    Text(
-                        text = "Almacenes ${getTypeDisplayName(selectedType)} (${uiState.warehouses.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(uiState.warehouses, key = { it.id }) { warehouse ->
-                            WarehouseItem(
-                                warehouse = warehouse,
-                                onDelete = { viewModel.deleteWarehouse(warehouse.id) }
-                            )
-                        }
-                    }
-                }
-                else -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Storage,
-                                contentDescription = "Sin almacenes",
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "No hay almacenes ${getTypeDisplayName(selectedType)}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                }
+            } else if (uiState.error != null) {
+                ErrorMessage(
+                    message = uiState.error!!,
+                    onDismiss = { viewModel.clearError() }
+                )
+            } else {
+                WarehousesList(
+                    warehouses = uiState.filteredWarehouses,
+                    onWarehouseClick = { viewModel.showEditDialog(it) },
+                    onDeleteClick = { viewModel.deleteWarehouse(it.id) }
+                )
             }
         }
     }
 
-    // Diálogo
-    if (showCreateDialog) {
-        CreateWarehouseDialog(
-            selectedType = selectedType,
-            viewModel = viewModel,
-            onDismiss = { showCreateDialog = false }
+    // Diálogos
+    if (uiState.showAddDialog) {
+        AddWarehouseDialog(
+            onDismiss = { viewModel.hideAddDialog() },
+            onConfirm = { warehouse ->
+                viewModel.createWarehouse(warehouse)
+            }
         )
+    }
+
+    if (uiState.showEditDialog && uiState.selectedWarehouse != null) {
+        EditWarehouseDialog(
+            warehouse = uiState.selectedWarehouse!!,
+            onDismiss = { viewModel.hideEditDialog() },
+            onConfirm = { warehouse ->
+                viewModel.updateWarehouse(warehouse.id, warehouse)
+            }
+        )
+    }
+
+    // Mensajes de éxito
+    uiState.successMessage?.let { message ->
+        LaunchedEffect(message) {
+            kotlinx.coroutines.delay(2000)
+            viewModel.clearSuccessMessage()
+        }
+        Snackbar(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(message)
+        }
     }
 }
 
 @Composable
-fun WarehouseTypeSelector(
-    selectedType: String,
-    onTypeSelected: (String) -> Unit
+fun SearchAndFiltersSection(
+    searchQuery: String,
+    selectedType: String?,
+    selectedLevel: Int?,
+    onSearchChange: (String) -> Unit,
+    onTypeFilterChange: (String?) -> Unit,
+    onLevelFilterChange: (Int?) -> Unit
 ) {
-    Column {
-        Text(
-            text = "Tipo de Almacén:",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        // Búsqueda
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Buscar por código, nombre o tipo...") },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { onSearchChange("") }) {
+                        Icon(Icons.Default.Close, "Limpiar")
+                    }
+                }
+            },
+            singleLine = true
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Filtros
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("refrigerado", "controlado", "estante").forEach { type ->
-                FilterChip(
-                    selected = selectedType == type,
-                    onClick = { onTypeSelected(type) },
-                    label = {
-                        Text(
-                            text = getTypeDisplayName(type),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+            // Filtro por tipo
+            FilterChip(
+                selected = selectedType != null,
+                onClick = {
+                    if (selectedType != null) {
+                        onTypeFilterChange(null)
+                    } else {
+                        // Aquí podrías mostrar un diálogo para seleccionar el tipo
+                        onTypeFilterChange("estante")
                     }
-                )
-            }
+                },
+                label = {
+                    Text(selectedType ?: "Tipo")
+                },
+                leadingIcon = {
+                    Icon(
+                        if (selectedType != null) Icons.Default.CheckCircle else Icons.Default.FilterList,
+                        null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
+
+            // Filtro por nivel
+            FilterChip(
+                selected = selectedLevel != null,
+                onClick = {
+                    if (selectedLevel != null) {
+                        onLevelFilterChange(null)
+                    } else {
+                        onLevelFilterChange(1)
+                    }
+                },
+                label = {
+                    Text(selectedLevel?.let { "Nivel $it" } ?: "Nivel")
+                },
+                leadingIcon = {
+                    Icon(
+                        if (selectedLevel != null) Icons.Default.CheckCircle else Icons.Default.FilterList,
+                        null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
         }
     }
 }
 
 @Composable
-fun CreateWarehouseDialog(
-    selectedType: String,
-    viewModel: WarehousesViewModel,
-    onDismiss: () -> Unit
+fun WarehousesList(
+    warehouses: List<Warehouse>,
+    onWarehouseClick: (Warehouse) -> Unit,
+    onDeleteClick: (Warehouse) -> Unit
 ) {
-    var shelfNumber by remember { mutableStateOf("1") }
-    var levelNumber by remember { mutableStateOf("1") }
-    var warehouseName by remember { mutableStateOf("") }
-    var warehouseDescription by remember { mutableStateOf("") }
-    var temperature by remember { mutableStateOf("") }
-    var humidity by remember { mutableStateOf("") }
-    var capacity by remember { mutableStateOf("") }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = MaterialTheme.shapes.large
+    if (warehouses.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Default.Inventory2,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.outline
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Crear Almacén ${getTypeDisplayName(selectedType)}",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    "No hay almacenes",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.outline
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Información del código
-                Text(
-                    text = "Código generado: ${shelfNumber.padStart(2, '0')}${levelNumber.padStart(2, '0')}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+            }
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(warehouses) { warehouse ->
+                WarehouseCard(
+                    warehouse = warehouse,
+                    onClick = { onWarehouseClick(warehouse) },
+                    onDelete = { onDeleteClick(warehouse) }
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Campos de número de estante y nivel
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    OutlinedTextField(
-                        value = shelfNumber,
-                        onValueChange = { newValue ->
-                            if (newValue.all { it.isDigit() } && newValue.toIntOrNull() in 1..99) {
-                                shelfNumber = newValue
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("N° Estante (1-99)") },
-                        placeholder = { Text("1") },
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = levelNumber,
-                        onValueChange = { newValue ->
-                            if (newValue.all { it.isDigit() } && newValue.toIntOrNull() in 1..99) {
-                                levelNumber = newValue
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("N° Nivel (1-99)") },
-                        placeholder = { Text("1") },
-                        singleLine = true
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedTextField(
-                    value = warehouseName,
-                    onValueChange = { warehouseName = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Nombre del almacén *") },
-                    placeholder = { Text("Ej: Almacén Principal ${getTypeDisplayName(selectedType)}") },
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedTextField(
-                    value = warehouseDescription,
-                    onValueChange = { warehouseDescription = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Descripción") },
-                    placeholder = { Text("Ej: Almacén para ${getTypeDescription(selectedType)}") },
-                    singleLine = false,
-                    maxLines = 3
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Campos específicos según el tipo
-                when (selectedType) {
-                    "refrigerado" -> {
-                        OutlinedTextField(
-                            value = temperature,
-                            onValueChange = { temperature = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Temperatura (°C) *") },
-                            placeholder = { Text("Ej: 2-8") },
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    "controlado" -> {
-                        OutlinedTextField(
-                            value = humidity,
-                            onValueChange = { humidity = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Humedad (%) *") },
-                            placeholder = { Text("Ej: 40-60") },
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                }
-
-                OutlinedTextField(
-                    value = capacity,
-                    onValueChange = { capacity = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Capacidad") },
-                    placeholder = { Text("Ej: 100 unidades, 50 cajas") },
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Botones de acción
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancelar")
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = {
-                            val shelf = shelfNumber.toIntOrNull() ?: 1
-                            val level = levelNumber.toIntOrNull() ?: 1
-
-                            if (warehouseName.isNotBlank() && shelf in 1..99 && level in 1..99) {
-                                viewModel.createWarehouse(
-                                    shelfNumber = shelf,
-                                    levelNumber = level,
-                                    name = warehouseName,
-                                    description = warehouseDescription,
-                                    type = selectedType,
-                                    temperature = if (temperature.isNotBlank()) temperature else null,
-                                    humidity = if (humidity.isNotBlank()) humidity else null,
-                                    capacity = if (capacity.isNotBlank()) capacity else null,
-                                    createdBy = "current_user_id"
-                                )
-                            }
-                            onDismiss()
-                        },
-                        enabled = warehouseName.isNotBlank() &&
-                                shelfNumber.toIntOrNull() in 1..99 &&
-                                levelNumber.toIntOrNull() in 1..99 &&
-                                when (selectedType) {
-                                    "refrigerado" -> temperature.isNotBlank()
-                                    "controlado" -> humidity.isNotBlank()
-                                    else -> true
-                                }
-                    ) {
-                        Text("Crear Almacén")
-                    }
-                }
             }
         }
     }
 }
 
 @Composable
-fun WarehouseItem(
+fun WarehouseCard(
     warehouse: Warehouse,
+    onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            // Encabezado con código y acciones
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Almacén ${warehouse.code}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Estante ${warehouse.shelfNumber.toString().padStart(2, '0')} - Nivel ${warehouse.levelNumber.toString().padStart(2, '0')}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = warehouse.name,
+                        text = warehouse.code,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-
-                    if (warehouse.description.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = warehouse.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
                     Text(
-                        text = "Tipo: ${getTypeDisplayName(warehouse.type)}",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = warehouse.name,
+                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-
-                    when (warehouse.type) {
-                        "refrigerado" -> {
-                            warehouse.temperature?.let { temp ->
-                                Text(
-                                    text = "Temperatura: $temp°C",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        "controlado" -> {
-                            warehouse.humidity?.let { hum ->
-                                Text(
-                                    text = "Humedad: $hum%",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    warehouse.capacity?.let { cap ->
-                        Text(
-                            text = "Capacidad: $cap",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    if (warehouse.createdAt > 0) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Creado: ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(java.util.Date(warehouse.createdAt))}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(24.dp)
-                ) {
+                IconButton(onClick = { showDeleteDialog = true }) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "Eliminar almacén",
+                        contentDescription = "Eliminar",
                         tint = MaterialTheme.colorScheme.error
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Tipo y ubicación
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                InfoChip(
+                    icon = Icons.Default.Category,
+                    label = warehouse.type,
+                    color = getTypeColor(warehouse.type)
+                )
+
+                InfoChip(
+                    icon = Icons.Default.LocationOn,
+                    label = warehouse.getFormattedLocation(),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Capacidad
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    Icons.Default.Inventory,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "Capacidad: ${warehouse.capacity}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            // Condiciones ambientales
+            if (warehouse.hasEnvironmentalControl()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    warehouse.temperature?.let { temp ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Thermostat,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                            Text(
+                                "$temp°C",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    warehouse.humidity?.let { hum ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.WaterDrop,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF2196F3)
+                            )
+                            Text(
+                                "$hum%",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Descripción
+            if (warehouse.description.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    warehouse.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Eliminar almacén") },
+            text = { Text("¿Estás seguro de que deseas eliminar este almacén?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete()
+                        showDeleteDialog = false
+                    }
+                ) {
+                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun InfoChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    color: Color
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(color)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+    }
+}
+
+@Composable
+fun getTypeColor(type: String): Color {
+    return when (type.lowercase()) {
+        "estante" -> Color(0xFFE3F2FD)
+        "bodega" -> Color(0xFFFFF3E0)
+        "refrigerado" -> Color(0xFFE0F2F1)
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+}
+
+@Composable
+fun ErrorMessage(message: String, onDismiss: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Cerrar",
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
             }
         }
     }
 }
 
-// Funciones helper
-private fun getTypeDisplayName(type: String): String {
-    return when (type) {
-        "refrigerado" -> "Refrigerado"
-        "controlado" -> "Controlado"
-        "estante" -> "Estante"
-        else -> type
-    }
+@Composable
+fun AddWarehouseDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (Warehouse) -> Unit
+) {
+    var code by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf("estante") }
+    var description by remember { mutableStateOf("") }
+    var capacity by remember { mutableStateOf("") }
+    var levelNumber by remember { mutableStateOf("1") }
+    var shelfNumber by remember { mutableStateOf("1") }
+    var temperature by remember { mutableStateOf("") }
+    var humidity by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Agregar Almacén") },
+        text = {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        label = { Text("Código *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nombre *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = type,
+                        onValueChange = { type = it },
+                        label = { Text("Tipo *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("estante, bodega, refrigerado...") }
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = capacity,
+                        onValueChange = { capacity = it },
+                        label = { Text("Capacidad *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = levelNumber,
+                            onValueChange = { levelNumber = it },
+                            label = { Text("Nivel") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = shelfNumber,
+                            onValueChange = { shelfNumber = it },
+                            label = { Text("Estante") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("Descripción") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 3
+                    )
+                }
+
+                item {
+                    Text(
+                        "Condiciones Ambientales (Opcional)",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = temperature,
+                            onValueChange = { temperature = it },
+                            label = { Text("Temp. °C") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = humidity,
+                            onValueChange = { humidity = it },
+                            label = { Text("Humedad %") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (code.isNotBlank() && name.isNotBlank() && capacity.isNotBlank()) {
+                        val warehouse = Warehouse(
+                            code = code,
+                            name = name,
+                            type = type,
+                            description = description,
+                            capacity = capacity,
+                            levelNumber = levelNumber.toIntOrNull() ?: 1,
+                            shelfNumber = shelfNumber.toIntOrNull() ?: 1,
+                            temperature = temperature.toDoubleOrNull(),
+                            humidity = humidity.toDoubleOrNull(),
+                            createdBy = "current_user_id"
+                        )
+                        onConfirm(warehouse)
+                    }
+                },
+                enabled = code.isNotBlank() && name.isNotBlank() && capacity.isNotBlank()
+            ) {
+                Text("Crear")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
 
-private fun getTypeDescription(type: String): String {
-    return when (type) {
-        "refrigerado" -> "productos refrigerados"
-        "controlado" -> "productos con control de humedad"
-        "estante" -> "productos de estantería"
-        else -> "productos"
-    }
+@Composable
+fun EditWarehouseDialog(
+    warehouse: Warehouse,
+    onDismiss: () -> Unit,
+    onConfirm: (Warehouse) -> Unit
+) {
+    var code by remember { mutableStateOf(warehouse.code) }
+    var name by remember { mutableStateOf(warehouse.name) }
+    var type by remember { mutableStateOf(warehouse.type) }
+    var description by remember { mutableStateOf(warehouse.description) }
+    var capacity by remember { mutableStateOf(warehouse.capacity) }
+    var levelNumber by remember { mutableStateOf(warehouse.levelNumber.toString()) }
+    var shelfNumber by remember { mutableStateOf(warehouse.shelfNumber.toString()) }
+    var temperature by remember { mutableStateOf(warehouse.temperature?.toString() ?: "") }
+    var humidity by remember { mutableStateOf(warehouse.humidity?.toString() ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar Almacén") },
+        text = {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        label = { Text("Código *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nombre *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = type,
+                        onValueChange = { type = it },
+                        label = { Text("Tipo *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = capacity,
+                        onValueChange = { capacity = it },
+                        label = { Text("Capacidad *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = levelNumber,
+                            onValueChange = { levelNumber = it },
+                            label = { Text("Nivel") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = shelfNumber,
+                            onValueChange = { shelfNumber = it },
+                            label = { Text("Estante") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("Descripción") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 3
+                    )
+                }
+
+                item {
+                    Text(
+                        "Condiciones Ambientales",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = temperature,
+                            onValueChange = { temperature = it },
+                            label = { Text("Temp. °C") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = humidity,
+                            onValueChange = { humidity = it },
+                            label = { Text("Humedad %") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (code.isNotBlank() && name.isNotBlank() && capacity.isNotBlank()) {
+                        val updatedWarehouse = warehouse.copy(
+                            code = code,
+                            name = name,
+                            type = type,
+                            description = description,
+                            capacity = capacity,
+                            levelNumber = levelNumber.toIntOrNull() ?: 1,
+                            shelfNumber = shelfNumber.toIntOrNull() ?: 1,
+                            temperature = temperature.toDoubleOrNull(),
+                            humidity = humidity.toDoubleOrNull()
+                        )
+                        onConfirm(updatedWarehouse)
+                    }
+                },
+                enabled = code.isNotBlank() && name.isNotBlank() && capacity.isNotBlank()
+            ) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }

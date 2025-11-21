@@ -1,4 +1,3 @@
-// ui/warehouses/WarehousesViewModel.kt
 package com.example.codemanager.ui.warehouses
 
 import androidx.lifecycle.ViewModel
@@ -10,131 +9,226 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+data class WarehousesUiState(
+    val warehouses: List<Warehouse> = emptyList(),
+    val filteredWarehouses: List<Warehouse> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val searchQuery: String = "",
+    val selectedType: String? = null,
+    val selectedLevel: Int? = null,
+    val showAddDialog: Boolean = false,
+    val showEditDialog: Boolean = false,
+    val selectedWarehouse: Warehouse? = null,
+    val successMessage: String? = null
+)
+
 class WarehousesViewModel(
-    private val warehouseRepository: WarehouseRepository
+    private val repository: WarehouseRepository = WarehouseRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WarehousesUiState())
     val uiState: StateFlow<WarehousesUiState> = _uiState.asStateFlow()
 
-    private val _selectedType = MutableStateFlow("estante")
-    val selectedType: StateFlow<String> = _selectedType.asStateFlow()
-
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message.asStateFlow()
-
     init {
-        println("DEBUG: WarehousesViewModel inicializado")
-        loadAllWarehouses()
-        setupWarehousesObserver()
+        loadWarehouses()
     }
 
-    private fun setupWarehousesObserver() {
+    fun loadWarehouses() {
         viewModelScope.launch {
-            warehouseRepository.warehouses.collect { allWarehouses ->
-                println("DEBUG: Observer - Recibidos ${allWarehouses.size} almacenes")
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-                val filteredWarehouses = if (_selectedType.value.isNotEmpty()) {
-                    allWarehouses.filter { it.type == _selectedType.value }
-                } else {
-                    allWarehouses
+            repository.getAllWarehouses().fold(
+                onSuccess = { warehouses ->
+                    _uiState.value = _uiState.value.copy(
+                        warehouses = warehouses,
+                        filteredWarehouses = applyFilters(warehouses),
+                        isLoading = false
+                    )
+                },
+                onFailure = { exception ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Error al cargar almacenes: ${exception.message}"
+                    )
                 }
+            )
+        }
+    }
 
-                _uiState.value = _uiState.value.copy(
-                    warehouses = filteredWarehouses,
-                    isLoading = false
+    fun createWarehouse(warehouse: Warehouse) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            repository.createWarehouse(warehouse).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(
+                        showAddDialog = false,
+                        successMessage = "Almacén creado exitosamente"
+                    )
+                    loadWarehouses()
+                },
+                onFailure = { exception ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = exception.message
+                    )
+                }
+            )
+        }
+    }
+
+    fun updateWarehouse(warehouseId: String, warehouse: Warehouse) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            repository.updateWarehouse(warehouseId, warehouse).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(
+                        showEditDialog = false,
+                        selectedWarehouse = null,
+                        successMessage = "Almacén actualizado exitosamente"
+                    )
+                    loadWarehouses()
+                },
+                onFailure = { exception ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = exception.message
+                    )
+                }
+            )
+        }
+    }
+
+    fun deleteWarehouse(warehouseId: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            repository.deleteWarehouse(warehouseId).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(
+                        successMessage = "Almacén eliminado exitosamente"
+                    )
+                    loadWarehouses()
+                },
+                onFailure = { exception ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Error al eliminar: ${exception.message}"
+                    )
+                }
+            )
+        }
+    }
+
+    fun updateEnvironmentalConditions(warehouseId: String, temperature: Double?, humidity: Double?) {
+        viewModelScope.launch {
+            repository.updateEnvironmentalConditions(warehouseId, temperature, humidity).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(
+                        successMessage = "Condiciones actualizadas"
+                    )
+                    loadWarehouses()
+                },
+                onFailure = { exception ->
+                    _uiState.value = _uiState.value.copy(
+                        error = "Error al actualizar: ${exception.message}"
+                    )
+                }
+            )
+        }
+    }
+
+    fun searchWarehouses(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+
+        if (query.isEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                filteredWarehouses = applyFilters(_uiState.value.warehouses)
+            )
+        } else {
+            viewModelScope.launch {
+                repository.searchWarehouses(query).fold(
+                    onSuccess = { warehouses ->
+                        _uiState.value = _uiState.value.copy(
+                            filteredWarehouses = applyFilters(warehouses)
+                        )
+                    },
+                    onFailure = { exception ->
+                        _uiState.value = _uiState.value.copy(
+                            error = "Error en búsqueda: ${exception.message}"
+                        )
+                    }
                 )
             }
         }
     }
 
-    fun loadAllWarehouses() {
-        println("DEBUG: Solicitando carga de almacenes")
-        _uiState.value = _uiState.value.copy(isLoading = true)
+    fun filterByType(type: String?) {
+        _uiState.value = _uiState.value.copy(selectedType = type)
+        _uiState.value = _uiState.value.copy(
+            filteredWarehouses = applyFilters(_uiState.value.warehouses)
+        )
+    }
 
-        viewModelScope.launch {
-            val result = warehouseRepository.loadWarehouses()
-            if (result.isFailure) {
-                val error = result.exceptionOrNull()?.message ?: "Error desconocido"
-                println("DEBUG: Error en loadAllWarehouses: $error")
-                _message.value = "Error al cargar almacenes: $error"
-                _uiState.value = _uiState.value.copy(isLoading = false)
+    fun filterByLevel(level: Int?) {
+        _uiState.value = _uiState.value.copy(selectedLevel = level)
+        _uiState.value = _uiState.value.copy(
+            filteredWarehouses = applyFilters(_uiState.value.warehouses)
+        )
+    }
+
+    private fun applyFilters(warehouses: List<Warehouse>): List<Warehouse> {
+        var filtered = warehouses
+
+        _uiState.value.selectedType?.let { type ->
+            filtered = filtered.filter { it.type == type }
+        }
+
+        _uiState.value.selectedLevel?.let { level ->
+            filtered = filtered.filter { it.levelNumber == level }
+        }
+
+        if (_uiState.value.searchQuery.isNotEmpty()) {
+            val query = _uiState.value.searchQuery
+            filtered = filtered.filter {
+                it.code.contains(query, ignoreCase = true) ||
+                        it.name.contains(query, ignoreCase = true) ||
+                        it.type.contains(query, ignoreCase = true)
             }
         }
+
+        return filtered
     }
 
-    fun createWarehouse(
-        shelfNumber: Int,
-        levelNumber: Int,
-        name: String,
-        description: String,
-        type: String,
-        temperature: String?,
-        humidity: String?,
-        capacity: String?,
-        createdBy: String
-    ) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-
-            val result = warehouseRepository.createWarehouse(
-                shelfNumber = shelfNumber,
-                levelNumber = levelNumber,
-                name = name,
-                description = description,
-                type = type,
-                temperature = temperature,
-                humidity = humidity,
-                capacity = capacity,
-                createdBy = createdBy
-            )
-
-            if (result.isSuccess) {
-                _message.value = "✅ Almacén creado exitosamente: ${result.getOrNull()?.code}"
-            } else {
-                _message.value = "❌ Error: ${result.exceptionOrNull()?.message}"
-            }
-            _uiState.value = _uiState.value.copy(isLoading = false)
-        }
+    fun showAddDialog() {
+        _uiState.value = _uiState.value.copy(showAddDialog = true)
     }
 
-    fun setSelectedType(type: String) {
-        println("DEBUG: Cambiando tipo a: $type")
-        _selectedType.value = type
+    fun hideAddDialog() {
+        _uiState.value = _uiState.value.copy(showAddDialog = false)
     }
 
-    fun deleteWarehouse(warehouseId: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-
-            val result = warehouseRepository.deleteWarehouse(warehouseId)
-
-            if (result.isSuccess) {
-                _message.value = "✅ Almacén eliminado exitosamente"
-            } else {
-                _message.value = "❌ Error al eliminar almacén: ${result.exceptionOrNull()?.message}"
-            }
-            _uiState.value = _uiState.value.copy(isLoading = false)
-        }
+    fun showEditDialog(warehouse: Warehouse) {
+        _uiState.value = _uiState.value.copy(
+            showEditDialog = true,
+            selectedWarehouse = warehouse
+        )
     }
 
-    fun clearMessage() {
-        _message.value = null
+    fun hideEditDialog() {
+        _uiState.value = _uiState.value.copy(
+            showEditDialog = false,
+            selectedWarehouse = null
+        )
     }
 
-    fun testFirebaseConnection() {
-        viewModelScope.launch {
-            val isConnected = warehouseRepository.testConnection()
-            if (isConnected) {
-                _message.value = "✅ Conexión con Firebase establecida"
-            } else {
-                _message.value = "❌ Error de conexión con Firebase"
-            }
-        }
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    fun clearSuccessMessage() {
+        _uiState.value = _uiState.value.copy(successMessage = null)
     }
 }
-
-data class WarehousesUiState(
-    val warehouses: List<Warehouse> = emptyList(),
-    val isLoading: Boolean = false
-)
