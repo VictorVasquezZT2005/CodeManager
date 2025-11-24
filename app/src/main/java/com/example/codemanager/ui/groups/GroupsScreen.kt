@@ -47,8 +47,6 @@ fun GroupsScreen(
             title = { Text("Crear Grupo Terapéutico") },
             text = {
                 Column {
-                    // Texto de "Código autoasignado" eliminado
-
                     // Campo de nombre
                     OutlinedTextField(
                         value = groupName,
@@ -66,7 +64,6 @@ fun GroupsScreen(
                         if (groupName.isNotBlank()) {
                             viewModel.createGroup(
                                 name = groupName,
-                                createdBy = "current_user_id"
                             )
                             groupName = ""
                         }
@@ -155,8 +152,6 @@ fun GroupsScreen(
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-
-            // Texto de "Código autoasignado" eliminado
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -312,14 +307,6 @@ fun GroupItem(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Número: ${group.sequence}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
 
                 Row {
@@ -349,8 +336,9 @@ fun GroupItem(
 
             if (group.createdAt > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
+                // --- CAMBIO AQUÍ: hh:mm a (formato 12 horas) ---
                 Text(
-                    text = "Creado: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(group.createdAt))}",
+                    text = "Creado: ${SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(group.createdAt))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

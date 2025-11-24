@@ -75,7 +75,7 @@ fun CodeManagerApp(
     warehouseRepository: WarehouseRepository
 ) {
     val uiState by authViewModel.uiState.collectAsState()
-    val currentUser by authViewModel.currentUser.collectAsState()
+    // val currentUser by authViewModel.currentUser.collectAsState() // No es estrictamente necesario aquí si no se usa
     val navController = rememberNavController()
 
     // Verificar si ya hay un usuario logueado al iniciar la app
@@ -111,12 +111,20 @@ fun CodeManagerApp(
                                 }
                             )
                         }
+
+                        // --- AQUÍ ESTÁ LA CORRECCIÓN ---
                         composable("codes") {
                             val codesViewModel: CodesViewModel = viewModel(
                                 factory = CodesViewModelFactory(codeRepository)
                             )
-                            CodesScreen(viewModel = codesViewModel)
+                            // Ahora pasamos ambos viewModels
+                            CodesScreen(
+                                authViewModel = authViewModel,
+                                viewModel = codesViewModel
+                            )
                         }
+                        // -------------------------------
+
                         composable("groups") {
                             val groupsViewModel: GroupsViewModel = viewModel(
                                 factory = GroupsViewModelFactory(groupRepository)

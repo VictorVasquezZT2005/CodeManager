@@ -19,8 +19,8 @@ class GroupRepository {
     private val _groups = MutableStateFlow<List<Group>>(emptyList())
     val groups: StateFlow<List<Group>> = _groups.asStateFlow()
 
-    // Se eliminó el parámetro description
-    suspend fun createGroup(name: String, createdBy: String = ""): Result<Group> {
+    // Parámetro createdBy eliminado
+    suspend fun createGroup(name: String): Result<Group> {
         return try {
             val nextSequence = getNextSequence("groups")
             val fullCode = nextSequence.toString().padStart(2, '0')
@@ -29,9 +29,8 @@ class GroupRepository {
                 id = UUID.randomUUID().toString(),
                 code = fullCode,
                 sequence = nextSequence,
-                name = name,
-                // description eliminado
-                createdBy = createdBy
+                name = name
+                // createdBy eliminado
             )
 
             groupsCollection.document(newGroup.id)
@@ -96,12 +95,11 @@ class GroupRepository {
         }
     }
 
-    // Se eliminó el parámetro description
     suspend fun updateGroup(groupId: String, name: String): Result<Boolean> {
         return try {
             groupsCollection.document(groupId)
                 .update(
-                    mapOf("name" to name) // Ya no actualizamos descripción
+                    mapOf("name" to name)
                 )
                 .await()
             loadGroups()

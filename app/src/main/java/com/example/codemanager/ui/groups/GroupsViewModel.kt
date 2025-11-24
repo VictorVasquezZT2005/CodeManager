@@ -39,11 +39,12 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
         }
     }
 
-    // Eliminado parámetro description
-    fun createGroup(name: String, createdBy: String = "") {
+    // Parámetro createdBy eliminado
+    fun createGroup(name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val result = groupRepository.createGroup(name, createdBy)
+            // Llamada actualizada al repositorio
+            val result = groupRepository.createGroup(name)
             _uiState.value = _uiState.value.copy(isLoading = false)
 
             if (result.isSuccess) {
@@ -68,7 +69,6 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
         }
     }
 
-    // Eliminado parámetro description
     fun updateGroup(groupId: String, name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)

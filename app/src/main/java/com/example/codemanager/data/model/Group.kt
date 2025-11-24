@@ -5,6 +5,5 @@ data class Group(
     val code: String = "",
     val sequence: Int = 0,
     val name: String = "",
-    val createdAt: Long = System.currentTimeMillis(),
-    val createdBy: String = ""
+    val createdAt: Long = System.currentTimeMillis()
 )

@@ -1,4 +1,3 @@
-// ui/codes/CodesScreen.kt
 package com.example.codemanager.ui.codes
 
 import androidx.compose.foundation.layout.*
@@ -17,14 +16,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.codemanager.data.repository.CodeRepository
+import com.example.codemanager.ui.auth.AuthViewModel
 
 @Composable
 fun CodesScreen(
+    authViewModel: AuthViewModel, // 1. Agregamos el AuthViewModel aquí
     viewModel: CodesViewModel = viewModel(factory = CodesViewModelFactory(CodeRepository()))
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedPrefix by viewModel.selectedPrefix.collectAsState()
     val message by viewModel.message.collectAsState()
+
+    // 2. Obtenemos el usuario actual
+    val currentUser by authViewModel.currentUser.collectAsState()
 
     var showDescriptionDialog by remember { mutableStateOf(false) }
     var descriptionText by remember { mutableStateOf("") }
@@ -43,15 +47,18 @@ fun CodesScreen(
             description = descriptionText,
             onDescriptionChange = { descriptionText = it },
             onConfirm = {
+                // 3. Obtenemos el nombre del usuario o ponemos "Desconocido" si algo falla
+                val userName = currentUser?.name ?: "Usuario Desconocido"
+
                 if (descriptionText.isNotBlank()) {
                     viewModel.generateNewCode(
                         description = descriptionText,
-                        createdBy = "current_user_id" // Aquí deberías pasar el ID del usuario actual
+                        createdBy = userName // 4. Usamos el nombre real
                     )
                 } else {
                     viewModel.generateNewCode(
                         description = "Código generado automáticamente",
-                        createdBy = "current_user_id"
+                        createdBy = userName // 4. Usamos el nombre real
                     )
                 }
                 descriptionText = ""
@@ -89,7 +96,7 @@ fun CodesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botón para generar nuevo código (siempre visible ya que no hay "ALL")
+            // Botón para generar nuevo código
             Button(
                 onClick = {
                     showDescriptionDialog = true
@@ -325,14 +332,6 @@ fun CodeItem(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Secuencia: ${code.sequence}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
                     if (code.createdBy.isNotEmpty()) {
                         Text(
                             text = "Creado por: ${code.createdBy}",
@@ -358,7 +357,7 @@ fun CodeItem(
             if (code.createdAt > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Creado: ${java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(java.util.Date(code.createdAt))}",
+                    text = "Creado: ${java.text.SimpleDateFormat("dd/MM/yyyy hh:mm a").format(java.util.Date(code.createdAt))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
