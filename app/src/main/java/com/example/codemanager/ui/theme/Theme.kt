@@ -63,23 +63,27 @@ fun CodeManagerTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
+
             val window = (view.context as Activity).window
 
-            // 1. Color de la barra de estado (Arriba)
-            window.statusBarColor = colorScheme.primary.toArgb()
+            val navBarColor = colorScheme.surface
+            val statusBarColor = colorScheme.background  // 🔥 barra de estado del color del fondo
 
-            // 2. Color de la barra de navegación (Abajo) - NUEVO
-            // Usamos 'surface' o 'background' para que coincida con el fondo de la app
-            window.navigationBarColor = colorScheme.surface.toArgb()
+            // Barra de estado = fondo de la app
+            window.statusBarColor = statusBarColor.toArgb()
 
-            // 3. Control de iconos claros u oscuros
+            // Barra de navegación = igual que NavigationBar de Compose
+            window.navigationBarColor = navBarColor.toArgb()
+
+            // Evitar contraste
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    window.isNavigationBarContrastEnforced = false
+                } catch (_: Throwable) { }
+            }
+
             val insetsController = WindowCompat.getInsetsController(window, view)
-
-            // Iconos barra superior
             insetsController.isAppearanceLightStatusBars = !darkTheme
-
-            // Iconos barra inferior (NUEVO)
-            // Si no es tema oscuro, queremos iconos oscuros en la barra de navegación
             insetsController.isAppearanceLightNavigationBars = !darkTheme
         }
     }

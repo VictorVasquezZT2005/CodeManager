@@ -12,13 +12,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp // <--- IMPORTANTE: Importar sp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.codemanager.data.repository.AuthRepository
 import com.example.codemanager.ui.auth.AuthViewModel
@@ -32,17 +30,12 @@ fun DashboardScreen(
     val currentUser by authViewModel.currentUser.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
 
-    // Cálculo de iniciales
     val userInitials = remember(currentUser?.name) {
         val name = currentUser?.name?.trim() ?: ""
         if (name.isNotEmpty()) {
-            val parts = name.split("\\s+".toRegex())
-            val first = parts.getOrNull(0)?.take(1) ?: ""
-            val second = parts.getOrNull(1)?.take(1) ?: ""
-            (first + second).uppercase()
-        } else {
-            "U"
-        }
+            val p = name.split("\\s+".toRegex())
+            "${p.getOrNull(0)?.take(1) ?: ""}${p.getOrNull(1)?.take(1) ?: ""}".uppercase()
+        } else "U"
     }
 
     Column(
@@ -51,94 +44,79 @@ fun DashboardScreen(
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
     ) {
-        // --- HEADER MATERIAL YOU ---
-        Box(
+
+        // ----------------------------
+        // HEADER LIMPIO SIN FONDO EXTRA
+        // ----------------------------
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.background
-                        )
-                    )
-                )
-                .padding(bottom = 32.dp)
+                .padding(top = 48.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 48.dp, start = 24.dp, end = 24.dp, bottom = 16.dp)
-            ) {
-                // Título pequeño "Dashboard"
-                Text(
-                    text = "DASHBOARD",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp // <--- CORREGIDO: Uso correcto de .sp
-                )
 
-                Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "DASHBOARD",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp
+            )
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.tertiaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // --- ICONO DE USUARIO MATERIAL YOU ---
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.tertiaryContainer),
-                        contentAlignment = Alignment.Center
+                    Text(
+                        text = userInitials,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(20.dp))
+
+                Column {
+                    Text(
+                        text = "Hola, ${currentUser?.name?.split(" ")?.first() ?: "Usuario"}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = MaterialTheme.shapes.extraSmall,
+                        modifier = Modifier.padding(top = 6.dp)
                     ) {
                         Text(
-                            text = userInitials,
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            fontWeight = FontWeight.Medium
+                            text = (currentUser?.rol ?: "...").uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
-                    }
-
-                    Spacer(modifier = Modifier.width(20.dp))
-
-                    Column {
-                        Text(
-                            text = "Hola, ${currentUser?.name?.split(" ")?.first() ?: "Usuario"}",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        // Badge para el rol
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = MaterialTheme.shapes.extraSmall,
-                            modifier = Modifier.padding(top = 6.dp)
-                        ) {
-                            Text(
-                                text = (currentUser?.rol ?: "...").uppercase(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
                     }
                 }
             }
         }
 
-        // --- CONTENIDO PRINCIPAL ---
+        // ----------------------------
+        // CONTENIDO PRINCIPAL
+        // ----------------------------
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .offset(y = (-20).dp)
         ) {
-            // Tarjeta de información del usuario
-            // CORREGIDO: Usamos ElevatedCard porque querías elevación sin borde visible.
-            // OutlinedCard obliga a tener borde.
+
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.elevatedCardColors(
@@ -146,9 +124,7 @@ fun DashboardScreen(
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp)
-                ) {
+                Column(modifier = Modifier.padding(24.dp)) {
                     Text(
                         text = "Datos de la cuenta",
                         style = MaterialTheme.typography.titleMedium,
@@ -184,7 +160,6 @@ fun DashboardScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Tarjeta de Bienvenida / Info
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -221,7 +196,6 @@ fun DashboardScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Botón de cerrar sesión
             Button(
                 onClick = { showLogoutDialog = true },
                 modifier = Modifier
@@ -238,17 +212,13 @@ fun DashboardScreen(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Cerrar Sesión",
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("Cerrar Sesión", fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
-    // Diálogo de confirmación
     if (showLogoutDialog) {
         LogoutConfirmDialog(
             onConfirm = onLogout,
@@ -256,8 +226,6 @@ fun DashboardScreen(
         )
     }
 }
-
-// --- Componentes Auxiliares ---
 
 @Composable
 private fun UserInfoRow(
@@ -272,10 +240,7 @@ private fun UserInfoRow(
         Box(
             modifier = Modifier
                 .size(40.dp)
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    CircleShape
-                ),
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -312,15 +277,8 @@ private fun LogoutConfirmDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.Logout, contentDescription = null) },
-        title = {
-            Text(text = "Cerrar Sesión", textAlign = TextAlign.Center)
-        },
-        text = {
-            Text(
-                text = "¿Estás seguro de que deseas salir del sistema?",
-                textAlign = TextAlign.Center
-            )
-        },
+        title = { Text("Cerrar Sesión", textAlign = TextAlign.Center) },
+        text = { Text("¿Estás seguro de que deseas salir del sistema?", textAlign = TextAlign.Center) },
         confirmButton = {
             TextButton(
                 onClick = onConfirm,

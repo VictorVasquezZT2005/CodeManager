@@ -13,8 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -26,8 +26,13 @@ fun NavBar(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
-    NavigationBar(modifier = modifier) {
+    val navBarColor = MaterialTheme.colorScheme.surface
 
+    NavigationBar(
+        modifier = modifier,
+        containerColor = navBarColor,
+        tonalElevation = 0.dp   // <- SUPER IMPORTANTE
+    ) {
         val navBackStackEntry = navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry.value?.destination
 
@@ -67,7 +72,6 @@ fun RowScope.NavBarItem(
 ) {
     val selected = currentDestination?.hierarchy?.any { it.route == route } == true
 
-    // Animación del icono
     val scale by animateFloatAsState(
         targetValue = if (selected) 1.2f else 1f,
         label = ""
@@ -106,8 +110,8 @@ fun RowScope.NavBarItem(
             Text(
                 text = label,
                 color = textColor,
-                fontSize = 10.sp,      // 🔥 texto más pequeño
-                textAlign = TextAlign.Center // 🔥 centrado total
+                fontSize = 10.sp,
+                textAlign = TextAlign.Center
             )
         },
         colors = NavigationBarItemDefaults.colors(
