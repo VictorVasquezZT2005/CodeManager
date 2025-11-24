@@ -1,6 +1,7 @@
 package com.example.codemanager.data.repository
 
 import com.example.codemanager.data.model.Warehouse
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
@@ -9,31 +10,23 @@ class WarehouseRepository {
     private val db = FirebaseFirestore.getInstance()
     private val warehousesCollection = db.collection("warehouses")
 
+    fun generateWarehouseId(): String {
+        // Generar ID único usando timestamp + random
+        return "WH_${System.currentTimeMillis()}_${(1000..9999).random()}"
+    }
+
     suspend fun getAllWarehouses(): Result<List<Warehouse>> {
         return try {
             val snapshot = warehousesCollection
-                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .orderBy("id")
                 .get()
                 .await()
 
             val warehouses = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(Warehouse::class.java)?.copy(id = doc.id)
+                doc.toWarehouse()
             }
-            Result.success(warehouses)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
 
-    suspend fun getWarehouseById(warehouseId: String): Result<Warehouse> {
-        return try {
-            val doc = warehousesCollection.document(warehouseId).get().await()
-            val warehouse = doc.toObject(Warehouse::class.java)?.copy(id = doc.id)
-            if (warehouse != null) {
-                Result.success(warehouse)
-            } else {
-                Result.failure(Exception("Almacén no encontrado"))
-            }
+            Result.success(warehouses)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -43,12 +36,13 @@ class WarehouseRepository {
         return try {
             val snapshot = warehousesCollection
                 .whereEqualTo("type", type)
-                .orderBy("code", Query.Direction.ASCENDING)
+                .orderBy("levelNumber")
+                .orderBy("itemNumber")
                 .get()
                 .await()
 
             val warehouses = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(Warehouse::class.java)?.copy(id = doc.id)
+                doc.toWarehouse()
             }
             Result.success(warehouses)
         } catch (e: Exception) {
@@ -61,15 +55,21 @@ class WarehouseRepository {
             // Verificar si el código ya existe
             val existingWarehouse = warehousesCollection
                 .whereEqualTo("code", warehouse.code)
+                .whereEqualTo("type", warehouse.type)
                 .get()
                 .await()
 
             if (!existingWarehouse.isEmpty) {
-                return Result.failure(Exception("El código ${warehouse.code} ya existe"))
+                return Result.failure(Exception("El código ${warehouse.code} ya existe para ${Warehouse.getTypeDisplayName(warehouse.type)}"))
             }
 
-            val docRef = warehousesCollection.add(warehouse.toMap()).await()
-            Result.success(docRef.id)
+            val warehouseData = warehouse.toMap().toMutableMap().apply {
+                put("createdAt", Timestamp.now())
+            }
+
+            // Usar el ID del warehouse como ID del documento
+            warehousesCollection.document(warehouse.id).set(warehouseData).await()
+            Result.success(warehouse.id)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -77,17 +77,11 @@ class WarehouseRepository {
 
     suspend fun updateWarehouse(warehouseId: String, warehouse: Warehouse): Result<Unit> {
         return try {
-            // Verificar si el código ya existe en otro almacén
-            val existingWarehouse = warehousesCollection
-                .whereEqualTo("code", warehouse.code)
-                .get()
-                .await()
-
-            if (!existingWarehouse.isEmpty && existingWarehouse.documents[0].id != warehouseId) {
-                return Result.failure(Exception("El código ${warehouse.code} ya existe"))
+            val warehouseData = warehouse.toMap().toMutableMap().apply {
+                put("createdAt", Timestamp.now())
             }
 
-            warehousesCollection.document(warehouseId).set(warehouse.toMap()).await()
+            warehousesCollection.document(warehouseId).set(warehouseData).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -103,53 +97,29 @@ class WarehouseRepository {
         }
     }
 
-    suspend fun updateEnvironmentalConditions(
-        warehouseId: String,
-        temperature: Double?,
-        humidity: Double?
-    ): Result<Unit> {
+    private fun com.google.firebase.firestore.DocumentSnapshot.toWarehouse(): Warehouse? {
         return try {
-            val updates = mutableMapOf<String, Any?>()
-            temperature?.let { updates["temperature"] = it }
-            humidity?.let { updates["humidity"] = it }
+            val id = getString("id") ?: return null
+            val code = getString("code") ?: return null
+            val name = getString("name") ?: return null
+            val type = getString("type") ?: return null
+            val levelNumber = getLong("levelNumber")?.toInt() ?: 1
+            val itemNumber = getLong("itemNumber")?.toInt() ?: 1
+            val createdBy = getString("createdBy") ?: ""
+            val createdAt = getLong("createdAt") ?: System.currentTimeMillis()
 
-            warehousesCollection.document(warehouseId).update(updates).await()
-            Result.success(Unit)
+            Warehouse(
+                id = id,
+                code = code,
+                name = name,
+                type = type,
+                levelNumber = levelNumber,
+                itemNumber = itemNumber,
+                createdBy = createdBy,
+                createdAt = createdAt
+            )
         } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun searchWarehouses(query: String): Result<List<Warehouse>> {
-        return try {
-            val snapshot = warehousesCollection.get().await()
-            val warehouses = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(Warehouse::class.java)?.copy(id = doc.id)
-            }.filter { warehouse ->
-                warehouse.code.contains(query, ignoreCase = true) ||
-                        warehouse.name.contains(query, ignoreCase = true) ||
-                        warehouse.type.contains(query, ignoreCase = true)
-            }
-            Result.success(warehouses)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun getWarehousesByLevel(levelNumber: Int): Result<List<Warehouse>> {
-        return try {
-            val snapshot = warehousesCollection
-                .whereEqualTo("levelNumber", levelNumber)
-                .orderBy("shelfNumber", Query.Direction.ASCENDING)
-                .get()
-                .await()
-
-            val warehouses = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(Warehouse::class.java)?.copy(id = doc.id)
-            }
-            Result.success(warehouses)
-        } catch (e: Exception) {
-            Result.failure(e)
+            null
         }
     }
 }

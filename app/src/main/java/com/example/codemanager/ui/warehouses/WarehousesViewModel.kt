@@ -14,13 +14,11 @@ data class WarehousesUiState(
     val filteredWarehouses: List<Warehouse> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val searchQuery: String = "",
-    val selectedType: String? = null,
-    val selectedLevel: Int? = null,
+    val selectedType: String = "estante",
     val showAddDialog: Boolean = false,
     val showEditDialog: Boolean = false,
     val selectedWarehouse: Warehouse? = null,
-    val successMessage: String? = null
+    val nextAvailableLocation: Pair<Int, Int>? = null
 )
 
 class WarehousesViewModel(
@@ -29,6 +27,9 @@ class WarehousesViewModel(
 
     private val _uiState = MutableStateFlow(WarehousesUiState())
     val uiState: StateFlow<WarehousesUiState> = _uiState.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
 
     init {
         loadWarehouses()
@@ -40,13 +41,23 @@ class WarehousesViewModel(
 
             repository.getAllWarehouses().fold(
                 onSuccess = { warehouses ->
+                    println("📦 DEBUG: Almacenes cargados: ${warehouses.size}")
+                    warehouses.forEach { w ->
+                        println("  - ${w.type} ${w.code}: ${w.name}")
+                    }
+
+                    // Actualizar el estado con todos los almacenes
                     _uiState.value = _uiState.value.copy(
                         warehouses = warehouses,
-                        filteredWarehouses = applyFilters(warehouses),
                         isLoading = false
                     )
+
+                    // Aplicar filtros inmediatamente después de cargar
+                    applyFiltersAndUpdateState(warehouses)
+                    calculateNextAvailableLocation()
                 },
                 onFailure = { exception ->
+                    println("❌ DEBUG: Error al cargar: ${exception.message}")
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         error = "Error al cargar almacenes: ${exception.message}"
@@ -62,10 +73,8 @@ class WarehousesViewModel(
 
             repository.createWarehouse(warehouse).fold(
                 onSuccess = {
-                    _uiState.value = _uiState.value.copy(
-                        showAddDialog = false,
-                        successMessage = "Almacén creado exitosamente"
-                    )
+                    _message.value = "${Warehouse.getTypeDisplayName(warehouse.type)} creado exitosamente"
+                    // Recargar inmediatamente después de crear
                     loadWarehouses()
                 },
                 onFailure = { exception ->
@@ -87,8 +96,9 @@ class WarehousesViewModel(
                     _uiState.value = _uiState.value.copy(
                         showEditDialog = false,
                         selectedWarehouse = null,
-                        successMessage = "Almacén actualizado exitosamente"
+                        isLoading = false
                     )
+                    _message.value = "${Warehouse.getTypeDisplayName(warehouse.type)} actualizado exitosamente"
                     loadWarehouses()
                 },
                 onFailure = { exception ->
@@ -107,9 +117,8 @@ class WarehousesViewModel(
 
             repository.deleteWarehouse(warehouseId).fold(
                 onSuccess = {
-                    _uiState.value = _uiState.value.copy(
-                        successMessage = "Almacén eliminado exitosamente"
-                    )
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _message.value = "Almacén eliminado exitosamente"
                     loadWarehouses()
                 },
                 onFailure = { exception ->
@@ -122,84 +131,104 @@ class WarehousesViewModel(
         }
     }
 
-    fun updateEnvironmentalConditions(warehouseId: String, temperature: Double?, humidity: Double?) {
+    fun generateNewWarehouse(name: String) {
         viewModelScope.launch {
-            repository.updateEnvironmentalConditions(warehouseId, temperature, humidity).fold(
-                onSuccess = {
-                    _uiState.value = _uiState.value.copy(
-                        successMessage = "Condiciones actualizadas"
-                    )
-                    loadWarehouses()
-                },
-                onFailure = { exception ->
-                    _uiState.value = _uiState.value.copy(
-                        error = "Error al actualizar: ${exception.message}"
-                    )
-                }
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            val currentType = _uiState.value.selectedType
+            val nextLocation = _uiState.value.nextAvailableLocation
+
+            if (nextLocation == null) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "No hay ubicaciones disponibles para ${Warehouse.getTypeDisplayName(currentType)}"
+                )
+                return@launch
+            }
+
+            val (level, itemNumber) = nextLocation
+
+            // Generar ID con UUID
+            val warehouseId = java.util.UUID.randomUUID().toString()
+            val code = Warehouse.generateCode(level, itemNumber)
+
+            val warehouse = Warehouse(
+                id = warehouseId,
+                code = code,
+                name = name,
+                type = currentType,
+                levelNumber = level,
+                itemNumber = itemNumber,
+                createdBy = "current_user_id"
             )
+
+            createWarehouse(warehouse)
         }
     }
 
-    fun searchWarehouses(query: String) {
-        _uiState.value = _uiState.value.copy(searchQuery = query)
+    private fun calculateNextAvailableLocation() {
+        val currentType = _uiState.value.selectedType
+        val warehousesOfType = _uiState.value.warehouses.filter { it.type == currentType }
 
-        if (query.isEmpty()) {
+        println("📍 DEBUG: Calculando siguiente ubicación para $currentType")
+        println("📍 DEBUG: Almacenes del tipo: ${warehousesOfType.size}")
+
+        if (warehousesOfType.isEmpty()) {
+            println("📍 DEBUG: Primer almacén - Nivel 1, Item 1")
             _uiState.value = _uiState.value.copy(
-                filteredWarehouses = applyFilters(_uiState.value.warehouses)
+                nextAvailableLocation = Pair(1, 1)
             )
-        } else {
-            viewModelScope.launch {
-                repository.searchWarehouses(query).fold(
-                    onSuccess = { warehouses ->
+            return
+        }
+
+        for (level in 1..Warehouse.MAX_LEVELS) {
+            val itemsInLevel = warehousesOfType.filter { it.levelNumber == level }
+            println("📍 DEBUG: Nivel $level - Items: ${itemsInLevel.size}")
+
+            if (itemsInLevel.size < Warehouse.MAX_ITEMS_PER_LEVEL) {
+                val usedNumbers = itemsInLevel.map { it.itemNumber }.toSortedSet()
+                println("📍 DEBUG: Números usados en nivel $level: $usedNumbers")
+
+                for (itemNumber in 1..Warehouse.MAX_ITEMS_PER_LEVEL) {
+                    if (!usedNumbers.contains(itemNumber)) {
+                        println("📍 DEBUG: Siguiente ubicación disponible: Nivel $level, Item $itemNumber")
                         _uiState.value = _uiState.value.copy(
-                            filteredWarehouses = applyFilters(warehouses)
+                            nextAvailableLocation = Pair(level, itemNumber)
                         )
-                    },
-                    onFailure = { exception ->
-                        _uiState.value = _uiState.value.copy(
-                            error = "Error en búsqueda: ${exception.message}"
-                        )
+                        return
                     }
-                )
+                }
             }
         }
+
+        println("📍 DEBUG: No hay ubicaciones disponibles")
+        _uiState.value = _uiState.value.copy(nextAvailableLocation = null)
     }
 
-    fun filterByType(type: String?) {
+    fun setSelectedType(type: String) {
+        println("🎯 DEBUG: Cambiando tipo a: $type")
         _uiState.value = _uiState.value.copy(selectedType = type)
-        _uiState.value = _uiState.value.copy(
-            filteredWarehouses = applyFilters(_uiState.value.warehouses)
-        )
+        applyFiltersAndUpdateState()
+        calculateNextAvailableLocation()
     }
 
-    fun filterByLevel(level: Int?) {
-        _uiState.value = _uiState.value.copy(selectedLevel = level)
-        _uiState.value = _uiState.value.copy(
-            filteredWarehouses = applyFilters(_uiState.value.warehouses)
-        )
+    private fun applyFiltersAndUpdateState(warehouses: List<Warehouse>? = null) {
+        val warehousesToFilter = warehouses ?: _uiState.value.warehouses
+        val filtered = applyFilters(warehousesToFilter)
+
+        println("🔍 DEBUG: Aplicando filtros")
+        println("🔍 DEBUG: Tipo seleccionado: ${_uiState.value.selectedType}")
+        println("🔍 DEBUG: Total almacenes: ${warehousesToFilter.size}")
+        println("🔍 DEBUG: Almacenes filtrados: ${filtered.size}")
+        filtered.forEach { w ->
+            println("  - ${w.type} ${w.code}: ${w.name}")
+        }
+
+        _uiState.value = _uiState.value.copy(filteredWarehouses = filtered)
     }
 
     private fun applyFilters(warehouses: List<Warehouse>): List<Warehouse> {
-        var filtered = warehouses
-
-        _uiState.value.selectedType?.let { type ->
-            filtered = filtered.filter { it.type == type }
-        }
-
-        _uiState.value.selectedLevel?.let { level ->
-            filtered = filtered.filter { it.levelNumber == level }
-        }
-
-        if (_uiState.value.searchQuery.isNotEmpty()) {
-            val query = _uiState.value.searchQuery
-            filtered = filtered.filter {
-                it.code.contains(query, ignoreCase = true) ||
-                        it.name.contains(query, ignoreCase = true) ||
-                        it.type.contains(query, ignoreCase = true)
-            }
-        }
-
-        return filtered
+        return warehouses.filter { it.type == _uiState.value.selectedType }
     }
 
     fun showAddDialog() {
@@ -228,7 +257,7 @@ class WarehousesViewModel(
         _uiState.value = _uiState.value.copy(error = null)
     }
 
-    fun clearSuccessMessage() {
-        _uiState.value = _uiState.value.copy(successMessage = null)
+    fun clearMessage() {
+        _message.value = null
     }
 }

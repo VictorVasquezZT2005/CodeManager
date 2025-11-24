@@ -38,7 +38,6 @@ import com.example.codemanager.ui.warehouses.WarehousesScreen
 import com.example.codemanager.ui.warehouses.WarehousesViewModel
 import com.example.codemanager.ui.warehouses.WarehousesViewModelFactory
 import com.example.codemanager.ui.users.UsersScreen
-import com.example.codemanager.ui.users.UsersViewModelFactory
 import com.example.codemanager.ui.theme.CodeManagerTheme
 
 class MainActivity : ComponentActivity() {
@@ -97,7 +96,6 @@ fun CodeManagerApp(
                     bottomBar = {
                         NavBar(
                             navController = navController,
-                            authViewModel = authViewModel
                         )
                     }
                 ) { paddingValues ->
@@ -127,7 +125,7 @@ fun CodeManagerApp(
                         }
                         composable("warehouses") {
                             val warehousesViewModel: WarehousesViewModel = viewModel(
-                                factory = WarehousesViewModelFactory(warehouseRepository)
+                                factory = WarehousesViewModelFactory()
                             )
                             WarehousesScreen(viewModel = warehousesViewModel)
                         }

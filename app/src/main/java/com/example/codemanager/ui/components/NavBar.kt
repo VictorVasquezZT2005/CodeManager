@@ -1,124 +1,61 @@
 package com.example.codemanager.ui.components
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.example.codemanager.ui.auth.AuthViewModel
 
 @Composable
 fun NavBar(
     navController: NavHostController,
-    authViewModel: AuthViewModel,
     modifier: Modifier = Modifier
 ) {
-    // Usar collectAsStateWithLifecycle en lugar de collectAsState
-    val currentUser by authViewModel.currentUser.collectAsStateWithLifecycle()
+    NavigationBar(modifier = modifier) {
 
-    Box(
-        modifier = modifier
-            .padding(horizontal = 12.dp, vertical = 8.dp) // Reducido horizontal para más espacio
-            .systemBarsPadding()
-            .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(25.dp),
-                clip = true
-            )
-    ) {
-        NavigationBar(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(70.dp) // Un poco más alto para mejor distribución
-                .clip(RoundedCornerShape(25.dp)),
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            tonalElevation = 0.dp
-        ) {
-            val navBackStackEntry = navController.currentBackStackEntryAsState()
-            val currentDestination = navBackStackEntry.value?.destination
+        val navBackStackEntry = navController.currentBackStackEntryAsState()
+        val currentDestination = navBackStackEntry.value?.destination
 
-            // Calcular si hay 4 o 5 elementos para ajustar el peso
-            val totalItems = if (currentUser?.rol == "Administrador") 5 else 4
+        val items = listOf(
+            NavItem("dashboard", "Dashboard", Icons.Default.Home),
+            NavItem("codes", "Códigos", Icons.Default.Code),
+            NavItem("groups", "Grupos", Icons.Default.Group),
+            NavItem("warehouses", "Almacenes", Icons.Default.Storage),
+            NavItem("users", "Usuarios", Icons.Default.Person)
+        )
 
+        items.forEach { item ->
             NavBarItem(
-                icon = Icons.Default.Home,
-                label = "Dashboard",
-                route = "dashboard",
+                icon = item.icon,
+                label = item.label,
+                route = item.route,
                 navController = navController,
-                currentDestination = currentDestination,
-                weight = 1f / totalItems
+                currentDestination = currentDestination
             )
-
-            NavBarItem(
-                icon = Icons.Default.Code,
-                label = "Códigos",
-                route = "codes",
-                navController = navController,
-                currentDestination = currentDestination,
-                weight = 1f / totalItems
-            )
-
-            NavBarItem(
-                icon = Icons.Default.Group,
-                label = "Grupos",
-                route = "groups",
-                navController = navController,
-                currentDestination = currentDestination,
-                weight = 1f / totalItems
-            )
-
-            NavBarItem(
-                icon = Icons.Default.Storage,
-                label = "Almacenes",
-                route = "warehouses",
-                navController = navController,
-                currentDestination = currentDestination,
-                weight = 1f / totalItems
-            )
-
-            // Solo mostrar usuarios si es admin
-            if (currentUser?.rol == "Administrador") {
-                NavBarItem(
-                    icon = Icons.Default.Person,
-                    label = "Usuarios",
-                    route = "users",
-                    navController = navController,
-                    currentDestination = currentDestination,
-                    weight = 1f / totalItems
-                )
-            }
         }
     }
 }
+
+data class NavItem(
+    val route: String,
+    val label: String,
+    val icon: ImageVector
+)
 
 @Composable
 fun RowScope.NavBarItem(
@@ -126,32 +63,51 @@ fun RowScope.NavBarItem(
     label: String,
     route: String,
     navController: NavHostController,
-    currentDestination: NavDestination?,
-    weight: Float = 1f
+    currentDestination: NavDestination?
 ) {
     val selected = currentDestination?.hierarchy?.any { it.route == route } == true
+
+    // Animación del icono
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.2f else 1f,
+        label = ""
+    )
+
+    val iconColor by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = ""
+    )
+
+    val textColor by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = ""
+    )
 
     NavigationBarItem(
         selected = selected,
         onClick = {
             navController.navigate(route) {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
                 launchSingleTop = true
                 restoreState = true
             }
         },
         icon = {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                modifier = Modifier.size(20.dp) // Reducido para más espacio
-            )
+            Box(modifier = Modifier.size(26.dp)) {
+                Icon(
+                    modifier = Modifier.scale(scale),
+                    imageVector = icon,
+                    tint = iconColor,
+                    contentDescription = label
+                )
+            }
         },
         label = {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis // Evita que el texto se desborde
+                color = textColor,
+                fontSize = 10.sp,      // 🔥 texto más pequeño
+                textAlign = TextAlign.Center // 🔥 centrado total
             )
         },
         colors = NavigationBarItemDefaults.colors(
@@ -159,8 +115,7 @@ fun RowScope.NavBarItem(
             selectedTextColor = MaterialTheme.colorScheme.primary,
             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-        ),
-        modifier = Modifier.weight(weight) // Distribución equitativa del espacio
+            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+        )
     )
 }
