@@ -5,8 +5,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check // Icono check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,239 +15,252 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.codemanager.data.model.Code
+import com.example.codemanager.data.model.TherapeuticGroup
+import com.example.codemanager.data.model.Warehouse
 import com.example.codemanager.data.repository.CodeRepository
 import com.example.codemanager.ui.auth.AuthViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CodesScreen(
-    authViewModel: AuthViewModel, // 1. Agregamos el AuthViewModel aquí
+    authViewModel: AuthViewModel,
     viewModel: CodesViewModel = viewModel(factory = CodesViewModelFactory(CodeRepository()))
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val selectedPrefix by viewModel.selectedPrefix.collectAsState()
+    val selectedType by viewModel.selectedType.collectAsState()
     val message by viewModel.message.collectAsState()
 
-    // 2. Obtenemos el usuario actual
+    val groups by viewModel.groups.collectAsState()
+    // OJO: Ahora observamos la lista FILTRADA, no todas las warehouses
+    val warehouses by viewModel.filteredWarehousesForSelection.collectAsState()
+
+    // Nuevo estado para el filtro
+    val warehouseTypeFilter by viewModel.warehouseTypeFilter.collectAsState()
+
+    val selectedGroup by viewModel.selectedGroup.collectAsState()
+    val selectedWarehouse by viewModel.selectedWarehouse.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
 
-    var showDescriptionDialog by remember { mutableStateOf(false) }
-    var descriptionText by remember { mutableStateOf("") }
+    var showGenerateDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    // Mostrar mensajes
     LaunchedEffect(message) {
         if (message != null) {
-            kotlinx.coroutines.delay(3000)
+            snackbarHostState.showSnackbar(message!!)
             viewModel.clearMessage()
         }
     }
 
-    // Diálogo para ingresar descripción
-    if (showDescriptionDialog) {
-        DescriptionDialog(
-            description = descriptionText,
-            onDescriptionChange = { descriptionText = it },
-            onConfirm = {
-                // 3. Obtenemos el nombre del usuario o ponemos "Desconocido" si algo falla
+    if (showGenerateDialog) {
+        GenerateCodeDialog(
+            codeType = selectedType,
+            groups = groups,
+            warehouses = warehouses, // Pasamos la lista ya filtrada
+            selectedGroup = selectedGroup,
+            selectedWarehouse = selectedWarehouse,
+            warehouseTypeFilter = warehouseTypeFilter, // Pasamos el filtro actual
+            onWarehouseTypeFilterChange = viewModel::setWarehouseTypeFilter, // Acción para cambiar filtro
+            onGroupSelected = viewModel::setSelectedGroup,
+            onWarehouseSelected = viewModel::setSelectedWarehouse,
+            onConfirm = { description ->
                 val userName = currentUser?.name ?: "Usuario Desconocido"
-
-                if (descriptionText.isNotBlank()) {
-                    viewModel.generateNewCode(
-                        description = descriptionText,
-                        createdBy = userName // 4. Usamos el nombre real
-                    )
-                } else {
-                    viewModel.generateNewCode(
-                        description = "Código generado automáticamente",
-                        createdBy = userName // 4. Usamos el nombre real
-                    )
-                }
-                descriptionText = ""
-                showDescriptionDialog = false
+                viewModel.generateCode(description.ifBlank { "Sin descripción" }, userName)
+                showGenerateDialog = false
             },
-            onDismiss = {
-                descriptionText = ""
-                showDescriptionDialog = false
-            }
+            onDismiss = { showGenerateDialog = false }
         )
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize()
-    ) {
+    // ... (El Scaffold y el resto de la UI principal se mantienen IGUAL que antes) ...
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // Header
-            Text(
-                text = "Gestión de Códigos",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Text("Gestión de Códigos", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text("Seleccionar Categoría:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TypeFilterChip(CodeType.EMERGENCY, selectedType, viewModel::selectType)
+                TypeFilterChip(CodeType.SERVICES, selectedType, viewModel::selectType)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TypeFilterChip(CodeType.MEDICINES, selectedType, viewModel::selectType)
+                TypeFilterChip(CodeType.DISPOSABLES, selectedType, viewModel::selectType)
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Selector de prefijo
-            PrefixSelector(
-                selectedPrefix = selectedPrefix,
-                onPrefixSelected = viewModel::setSelectedPrefix
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Botón para generar nuevo código
             Button(
-                onClick = {
-                    showDescriptionDialog = true
-                },
+                onClick = { showGenerateDialog = true },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isLoading,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Procesando...")
                 } else {
-                    Icon(Icons.Default.Add, contentDescription = "Generar código")
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Generar Código ${selectedType.label}")
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Generar Código $selectedPrefix-XXXXX")
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Mostrar mensaje
-            if (message != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                ) {
-                    Text(
-                        text = message!!,
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            // Lista de códigos
-            if (uiState.isLoading && uiState.filteredCodes.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (uiState.filteredCodes.isNotEmpty()) {
-                Text(
-                    text = "Códigos generados (${uiState.filteredCodes.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
+            if (uiState.filteredCodes.isNotEmpty()) {
+                Text("${selectedType.label} (${uiState.filteredCodes.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(uiState.filteredCodes, key = { it.id }) { code ->
-                        CodeItem(
-                            code = code,
-                            onDelete = { viewModel.deleteCode(code.id) }
-                        )
+                        CodeItem(code = code, onDelete = { viewModel.deleteCode(code.id) })
                     }
                 }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No hay códigos generados",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            } else if (!uiState.isLoading) {
+                Box(modifier = Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No hay códigos registrados", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            } else {
+                Box(modifier = Modifier.weight(1f).fillMaxSize())
             }
         }
     }
 }
 
+// ... (TypeFilterChip sigue igual) ...
 @Composable
-fun DescriptionDialog(
-    description: String,
-    onDescriptionChange: (String) -> Unit,
-    onConfirm: () -> Unit,
+fun TypeFilterChip(type: CodeType, selectedType: CodeType, onSelect: (CodeType) -> Unit) {
+    FilterChip(
+        selected = type == selectedType,
+        onClick = { onSelect(type) },
+        label = { Text(type.label) },
+        modifier = Modifier.wrapContentWidth()
+    )
+}
+
+// --- ACTUALIZADO: GENERATE CODE DIALOG CON FILTRO ---
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GenerateCodeDialog(
+    codeType: CodeType,
+    groups: List<TherapeuticGroup>,
+    warehouses: List<Warehouse>,
+    selectedGroup: TherapeuticGroup?,
+    selectedWarehouse: Warehouse?,
+    warehouseTypeFilter: String, // Nuevo parámetro
+    onWarehouseTypeFilterChange: (String) -> Unit, // Nuevo parámetro
+    onGroupSelected: (TherapeuticGroup) -> Unit,
+    onWarehouseSelected: (Warehouse) -> Unit,
+    onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var descriptionText by remember { mutableStateOf("") }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = MaterialTheme.shapes.large
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "Agregar Descripción",
+                    text = "Nuevo Código: ${codeType.label}",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Campo de descripción
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = onDescriptionChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Descripción del código") },
-                    placeholder = { Text("Ej: Compra de materiales de oficina") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Description,
-                            contentDescription = "Descripción"
+                if (codeType.isComposite) {
+                    Text("Configuración:", style = MaterialTheme.typography.labelLarge)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 1. Grupo Terapéutico
+                    ExposedDropdownItem(
+                        label = "Grupo Terapéutico (00)",
+                        options = groups,
+                        selectedOption = selectedGroup,
+                        onOptionSelected = onGroupSelected,
+                        optionText = { "${it.code} - ${it.name}" }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- NUEVO: SELECTOR DE TIPO DE ALMACÉN ---
+                    Text("Tipo de Almacén:", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = warehouseTypeFilter == "estante",
+                            onClick = { onWarehouseTypeFilterChange("estante") },
+                            label = { Text("Estantes") },
+                            leadingIcon = { if (warehouseTypeFilter == "estante") Icon(Icons.Default.Check, null) }
                         )
-                    },
-                    singleLine = false,
+                        FilterChip(
+                            selected = warehouseTypeFilter == "refrigerador",
+                            onClick = { onWarehouseTypeFilterChange("refrigerador") },
+                            label = { Text("Refrigeradores") },
+                            leadingIcon = { if (warehouseTypeFilter == "refrigerador") Icon(Icons.Default.Check, null) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 2. Dropdown Almacén (Ahora muestra solo los filtrados)
+                    ExposedDropdownItem(
+                        label = "Seleccionar ${if(warehouseTypeFilter == "estante") "Estante" else "Refrigerador"}",
+                        options = warehouses,
+                        selectedOption = selectedWarehouse,
+                        onOptionSelected = onWarehouseSelected,
+                        optionText = { "${it.code} - ${it.name}" }
+                    )
+
+                    // Mensaje de ayuda si no hay items
+                    if (warehouses.isEmpty()) {
+                        Text(
+                            text = "No hay ${if(warehouseTypeFilter == "estante") "estantes" else "refrigeradores"} registrados.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                OutlinedTextField(
+                    value = descriptionText,
+                    onValueChange = { descriptionText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Descripción / Detalle") },
+                    placeholder = { Text("Ej: Compra urgente...") },
                     maxLines = 3
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Botones de acción
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancelar")
-                    }
-
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancelar") }
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    Button(
-                        onClick = onConfirm,
-                        enabled = description.isNotBlank()
-                    ) {
-                        Text("Generar Código")
+                    val isValid = if (codeType.isComposite) {
+                        selectedGroup != null && selectedWarehouse != null
+                    } else true
+
+                    Button(onClick = { onConfirm(descriptionText) }, enabled = isValid) {
+                        Text("Generar")
                     }
                 }
             }
@@ -255,112 +268,63 @@ fun DescriptionDialog(
     }
 }
 
+// ... (ExposedDropdownItem y CodeItem siguen igual) ...
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrefixSelector(
-    selectedPrefix: String,
-    onPrefixSelected: (String) -> Unit
+fun <T> ExposedDropdownItem(
+    label: String,
+    options: List<T>,
+    selectedOption: T?,
+    onOptionSelected: (T) -> Unit,
+    optionText: (T) -> String
 ) {
-    Column {
-        Text(
-            text = "Seleccionar tipo de código:",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
-        )
+    var expanded by remember { mutableStateOf(false) }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("62", "70").forEach { prefix ->
-                FilterChip(
-                    selected = selectedPrefix == prefix,
-                    onClick = { onPrefixSelected(prefix) },
-                    label = {
-                        Text(
-                            text = when (prefix) {
-                                "62" -> "Compras Emergencia"
-                                "70" -> "Servicios"
-                                else -> prefix
-                            }
-                        )
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun CodeItem(
-    code: com.example.codemanager.data.model.Code,
-    onDelete: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+        OutlinedTextField(
+            value = if (selectedOption != null) optionText(selectedOption) else "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            modifier = Modifier.menuAnchor().fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = code.code,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    if (code.description.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = code.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    if (code.createdBy.isNotEmpty()) {
-                        Text(
-                            text = "Creado por: ${code.createdBy}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Eliminar código",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-
-            // Mostrar la fecha de creación si está disponible
-            if (code.createdAt > 0) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Creado: ${java.text.SimpleDateFormat("dd/MM/yyyy hh:mm a").format(java.util.Date(code.createdAt))}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(text = optionText(option)) },
+                    onClick = { onOptionSelected(option); expanded = false }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun CodeItem(code: Code, onDelete: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = code.code, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    if (code.description.isNotBlank()) Text(text = code.description, style = MaterialTheme.typography.bodyMedium)
+                }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error) }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Por: ${code.createdBy}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (code.createdAt > 0) {
+                    val dateFormat = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
+                    Text(text = dateFormat.format(Date(code.createdAt)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }

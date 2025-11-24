@@ -13,23 +13,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.codemanager.data.model.Warehouse
+import com.example.codemanager.data.model.Warehouse // <-- Importación del Modelo unificado
+import com.example.codemanager.data.repository.WarehouseRepository
 
+@OptIn(ExperimentalMaterial3Api::class) // Necesario para FilterChip y Cards
 @Composable
 fun WarehousesScreen(
-    viewModel: WarehousesViewModel = viewModel(factory = WarehousesViewModelFactory())
+    // Inyectamos el repositorio a través de la Factory
+    viewModel: WarehousesViewModel = viewModel(factory = WarehousesViewModelFactory(WarehouseRepository()))
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val message by viewModel.message.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
 
+    // Manejo de mensajes temporales
     LaunchedEffect(message) {
         if (message != null) {
             kotlinx.coroutines.delay(3000)
             viewModel.clearMessage()
         }
     }
+
+    // --- DIÁLOGOS ---
 
     if (showAddDialog) {
         AddWarehouseDialog(
@@ -53,12 +59,15 @@ fun WarehousesScreen(
         )
     }
 
+    // --- UI PRINCIPAL ---
+
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
+            // Título
             Text(
                 text = "Gestión de Almacenes",
                 style = MaterialTheme.typography.headlineMedium,
@@ -67,7 +76,7 @@ fun WarehousesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Selector de tipo
+            // Selector de Tipo (Estante / Refrigerador)
             WarehouseTypeSelector(
                 selectedType = uiState.selectedType,
                 onTypeSelected = viewModel::setSelectedType
@@ -75,10 +84,11 @@ fun WarehousesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botón para agregar
+            // Botón Agregar
             Button(
                 onClick = { showAddDialog = true },
                 modifier = Modifier.fillMaxWidth(),
+                // Solo habilitado si no está cargando y si el sistema calculó una ubicación libre
                 enabled = !uiState.isLoading && uiState.nextAvailableLocation != null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
@@ -89,25 +99,31 @@ fun WarehousesScreen(
                         modifier = Modifier.size(16.dp),
                         color = MaterialTheme.colorScheme.onPrimary
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cargando...")
                 } else {
-                    Icon(Icons.Default.Add, contentDescription = "Agregar almacén")
+                    Icon(Icons.Default.Add, contentDescription = "Agregar")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Agregar ${Warehouse.getTypeDisplayName(uiState.selectedType)}")
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Agregar ${Warehouse.getTypeDisplayName(uiState.selectedType)}")
             }
 
-            if (uiState.nextAvailableLocation == null) {
+            // Aviso si no hay espacio
+            if (uiState.nextAvailableLocation == null && !uiState.isLoading) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "⚠️ No hay espacios disponibles para ${Warehouse.getTypeDisplayName(uiState.selectedType)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Text(
+                        text = "⚠️ No hay espacios disponibles. Se han llenado todos los niveles y estantes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Mensaje
+            // Mensaje de éxito/error (Banner)
             if (message != null) {
                 Card(
                     modifier = Modifier
@@ -125,14 +141,9 @@ fun WarehousesScreen(
                 }
             }
 
-            // Lista
+            // Lista de Almacenes
             if (uiState.isLoading && uiState.filteredWarehouses.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             } else if (uiState.filteredWarehouses.isNotEmpty()) {
@@ -157,23 +168,25 @@ fun WarehousesScreen(
                     }
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No hay ${Warehouse.getTypeDisplayName(uiState.selectedType).lowercase()}s registrados",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Box(modifier = Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Inventory2, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.surfaceVariant)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No hay registros",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+// --- COMPONENTES AUXILIARES ---
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WarehouseTypeSelector(
     selectedType: String,
@@ -181,13 +194,11 @@ fun WarehouseTypeSelector(
 ) {
     Column {
         Text(
-            text = "Seleccionar tipo de almacén:",
-            style = MaterialTheme.typography.titleSmall,
+            text = "Tipo de Almacenamiento:",
+            style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold
         )
-
         Spacer(modifier = Modifier.height(8.dp))
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -196,63 +207,10 @@ fun WarehouseTypeSelector(
                 FilterChip(
                     selected = selectedType == type,
                     onClick = { onTypeSelected(type) },
-                    label = { Text(Warehouse.getTypeDisplayName(type)) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun WarehouseFilters(
-    searchQuery: String,
-    selectedLevel: Int?,
-    onSearchChange: (String) -> Unit,
-    onLevelFilterChange: (Int?) -> Unit
-) {
-    Column {
-        Text(
-            text = "Buscar almacenes:",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Buscar por código o nombre...") },
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "Filtrar por nivel:",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            for (level in 1..5) {
-                FilterChip(
-                    selected = selectedLevel == level,
-                    onClick = {
-                        if (selectedLevel == level) {
-                            onLevelFilterChange(null)
-                        } else {
-                            onLevelFilterChange(level)
-                        }
-                    },
-                    label = { Text("Nivel $level") }
+                    label = { Text(Warehouse.getTypeDisplayName(type)) },
+                    leadingIcon = {
+                        if (selectedType == type) Icon(Icons.Default.Check, null)
+                    }
                 )
             }
         }
@@ -269,38 +227,30 @@ fun WarehouseItem(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    // Muestra: "Estante 0102"
                     Text(
                         text = warehouse.getDisplayCode(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
-
                     Spacer(modifier = Modifier.height(4.dp))
-
                     Text(
                         text = warehouse.name,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.Medium
                     )
-
                     Spacer(modifier = Modifier.height(4.dp))
-
+                    // Muestra: "Estante 01 - Nivel 02"
                     Text(
                         text = warehouse.getFormattedLocation(),
                         style = MaterialTheme.typography.bodySmall,
@@ -308,18 +258,11 @@ fun WarehouseItem(
                     )
                 }
 
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
+                Row {
+                    IconButton(onClick = onEdit) {
                         Icon(Icons.Default.Edit, "Editar", tint = MaterialTheme.colorScheme.primary)
                     }
-
-                    IconButton(
-                        onClick = { showDeleteDialog = true },
-                        modifier = Modifier.size(24.dp)
-                    ) {
+                    IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(Icons.Default.Delete, "Eliminar", tint = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -330,17 +273,18 @@ fun WarehouseItem(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar almacén") },
-            text = { Text("¿Estás seguro de que deseas eliminar este almacén?") },
+            title = { Text("Eliminar Almacén") },
+            text = { Text("¿Estás seguro? Esto no eliminará los códigos asociados, pero perderás la referencia de ubicación.") },
             confirmButton = {
-                TextButton(onClick = { onDelete(); showDeleteDialog = false }) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                Button(
+                    onClick = { onDelete(); showDeleteDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Eliminar")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancelar")
-                }
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") }
             }
         )
     }
@@ -349,7 +293,7 @@ fun WarehouseItem(
 @Composable
 fun AddWarehouseDialog(
     selectedType: String,
-    nextLocation: Pair<Int, Int>?,
+    nextLocation: Pair<Int, Int>?, // Pair(Level, Item)
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
@@ -357,48 +301,48 @@ fun AddWarehouseDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "Agregar ${Warehouse.getTypeDisplayName(selectedType)}",
+                    text = "Nuevo ${Warehouse.getTypeDisplayName(selectedType)}",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                nextLocation?.let { (level, itemNumber) ->
+                if (nextLocation != null) {
+                    val (level, itemNumber) = nextLocation
+                    // Usamos la lógica del modelo: generateCode(level, item)
                     val nextCode = Warehouse.generateCode(level, itemNumber)
+
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        )
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Ubicación Sugerida:", style = MaterialTheme.typography.labelSmall)
                             Text(
-                                text = "Ubicación asignada automáticamente:",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
+                                text = nextCode,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
+                            Divider(color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 8.dp))
 
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = "Código: $nextCode",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-                            // --- CORRECCIÓN VISUAL: Invertido para coincidir con la lógica ---
-                            Text(text = "${Warehouse.getTypeDisplayName(selectedType)}: ${itemNumber.toString().padStart(2, '0')}")
-                            Text(text = "Nivel: ${level.toString().padStart(2, '0')}")
+                            // Desglose Visual
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column {
+                                    Text("Identificador", style = MaterialTheme.typography.labelSmall)
+                                    Text(itemNumber.toString().padStart(2, '0'), style = MaterialTheme.typography.titleMedium)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Nivel", style = MaterialTheme.typography.labelSmall)
+                                    Text(level.toString().padStart(2, '0'), style = MaterialTheme.typography.titleMedium)
+                                }
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -407,28 +351,20 @@ fun AddWarehouseDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Nombre *") },
+                    label = { Text("Nombre descriptivo *") },
+                    placeholder = { Text("Ej: Lado Izquierdo, Zona A") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                val isFormValid = name.isNotBlank() && nextLocation != null
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancelar")
-                    }
-
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancelar") }
                     Spacer(modifier = Modifier.width(8.dp))
-
                     Button(
                         onClick = { onConfirm(name) },
-                        enabled = isFormValid
+                        enabled = name.isNotBlank() && nextLocation != null
                     ) {
                         Text("Crear")
                     }
@@ -448,16 +384,18 @@ fun EditWarehouseDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "Editar ${Warehouse.getTypeDisplayName(warehouse.type)}",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    text = "Editar Almacén",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                Text(
+                    text = "Código: ${warehouse.code}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -465,31 +403,19 @@ fun EditWarehouseDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Nombre *") },
+                    label = { Text("Nombre") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                val isFormValid = name.isNotBlank()
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancelar")
-                    }
-
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancelar") }
                     Spacer(modifier = Modifier.width(8.dp))
-
                     Button(
-                        onClick = {
-                            val updatedWarehouse = warehouse.copy(name = name)
-                            onConfirm(updatedWarehouse)
-                        },
-                        enabled = isFormValid
+                        onClick = { onConfirm(warehouse.copy(name = name)) },
+                        enabled = name.isNotBlank()
                     ) {
                         Text("Guardar")
                     }

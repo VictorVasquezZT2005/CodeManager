@@ -1,7 +1,6 @@
 package com.example.codemanager.data.repository
 
-import com.example.codemanager.data.model.Warehouse
-import com.google.firebase.Timestamp
+import com.example.codemanager.data.model.Warehouse // Asegúrate que importa el del Models.kt
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
@@ -9,23 +8,19 @@ class WarehouseRepository {
     private val db = FirebaseFirestore.getInstance()
     private val warehousesCollection = db.collection("warehouses")
 
-    fun generateWarehouseId(): String {
-        // Generar ID único usando timestamp + random
-        return "WH_${System.currentTimeMillis()}_${(1000..9999).random()}"
-    }
-
+    // --- LECTURA ---
     suspend fun getAllWarehouses(): Result<List<Warehouse>> {
         return try {
             val snapshot = warehousesCollection
-                .orderBy("id") // Puedes cambiar esto por "createdAt" si quieres orden cronológico
-                .get()
+                .get() // Traemos todo sin ordenar primero para evitar errores de índices faltantes
                 .await()
 
             val warehouses = snapshot.documents.mapNotNull { doc ->
-                doc.toWarehouse()
+                doc.toWarehouse() // Usamos la función robusta de abajo
             }
 
-            Result.success(warehouses)
+            // Ordenamos en memoria
+            Result.success(warehouses.sortedBy { it.name })
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -35,8 +30,6 @@ class WarehouseRepository {
         return try {
             val snapshot = warehousesCollection
                 .whereEqualTo("type", type)
-                .orderBy("levelNumber")
-                .orderBy("itemNumber")
                 .get()
                 .await()
 
@@ -49,25 +42,21 @@ class WarehouseRepository {
         }
     }
 
+    // --- ESCRITURA ---
     suspend fun createWarehouse(warehouse: Warehouse): Result<String> {
         return try {
-            // Verificar si el código ya existe para ese tipo
-            val existingWarehouse = warehousesCollection
+            // Verificación simple de duplicados
+            val existing = warehousesCollection
                 .whereEqualTo("code", warehouse.code)
                 .whereEqualTo("type", warehouse.type)
-                .get()
-                .await()
+                .get().await()
 
-            if (!existingWarehouse.isEmpty) {
-                return Result.failure(Exception("El código ${warehouse.code} ya existe para ${Warehouse.getTypeDisplayName(warehouse.type)}"))
+            if (!existing.isEmpty) {
+                return Result.failure(Exception("El código ${warehouse.code} ya existe."))
             }
 
-            val warehouseData = warehouse.toMap().toMutableMap().apply {
-                put("createdAt", Timestamp.now()) // Se guarda como Timestamp
-            }
-
-            // Usar el ID del warehouse como ID del documento
-            warehousesCollection.document(warehouse.id).set(warehouseData).await()
+            // Guardamos usando el mapa del modelo
+            warehousesCollection.document(warehouse.id).set(warehouse.toMap()).await()
             Result.success(warehouse.id)
         } catch (e: Exception) {
             Result.failure(e)
@@ -76,13 +65,7 @@ class WarehouseRepository {
 
     suspend fun updateWarehouse(warehouseId: String, warehouse: Warehouse): Result<Unit> {
         return try {
-            val warehouseData = warehouse.toMap().toMutableMap().apply {
-                // Al actualizar, mantenemos la fecha de creación original si es posible,
-                // o actualizamos si esa es tu lógica. Aquí he dejado tu lógica original:
-                put("createdAt", Timestamp.now())
-            }
-
-            warehousesCollection.document(warehouseId).set(warehouseData).await()
+            warehousesCollection.document(warehouseId).set(warehouse.toMap()).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -98,20 +81,40 @@ class WarehouseRepository {
         }
     }
 
-    // --- FUNCIÓN CORREGIDA ---
+    // --- FUNCIÓN DE CONVERSIÓN (ROBUSTA) ---
+    // Esta función intenta rescatar los datos aunque estén incompletos
     private fun com.google.firebase.firestore.DocumentSnapshot.toWarehouse(): Warehouse? {
         return try {
-            val id = getString("id") ?: return null
-            val code = getString("code") ?: return null
-            val name = getString("name") ?: return null
-            val type = getString("type") ?: return null
+            // 1. ID: Si no hay campo 'id', usamos el ID del documento
+            val id = getString("id") ?: this.id
+
+            // 2. Nombre: Si es nulo, ponemos un texto por defecto
+            val name = getString("name") ?: "Sin Nombre"
+
+            // 3. Tipo: Si es nulo, asumimos 'estante' para que aparezca en la lista
+            val type = getString("type") ?: "estante"
+
+            // 4. Código: Si no tiene, ponemos S/C
+            val code = getString("code") ?: "S/C"
+
+            // 5. Números: Si fallan, ponemos 1
             val levelNumber = getLong("levelNumber")?.toInt() ?: 1
             val itemNumber = getLong("itemNumber")?.toInt() ?: 1
-            val createdBy = getString("createdBy") ?: ""
 
-            // CORRECCIÓN: Leer como Timestamp de Firebase y convertir a Long (milisegundos)
-            val timestamp = getTimestamp("createdAt")
-            val createdAt = timestamp?.toDate()?.time ?: System.currentTimeMillis()
+            val createdBy = getString("createdBy") ?: "Desconocido"
+
+            // 6. Fecha: Soporta formato viejo (Timestamp) y nuevo (Long)
+            val createdAt = try {
+                val longTime = getLong("createdAt")
+                if (longTime != null) {
+                    longTime
+                } else {
+                    val timestamp = getTimestamp("createdAt")
+                    timestamp?.toDate()?.time ?: System.currentTimeMillis()
+                }
+            } catch (e: Exception) {
+                System.currentTimeMillis()
+            }
 
             Warehouse(
                 id = id,
@@ -124,7 +127,7 @@ class WarehouseRepository {
                 createdAt = createdAt
             )
         } catch (e: Exception) {
-            e.printStackTrace() // Útil para ver errores en Logcat
+            e.printStackTrace()
             null
         }
     }

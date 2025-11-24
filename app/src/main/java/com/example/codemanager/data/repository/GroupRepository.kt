@@ -1,6 +1,6 @@
 package com.example.codemanager.data.repository
 
-import com.example.codemanager.data.model.Group
+import com.example.codemanager.data.model.TherapeuticGroup // <-- Importación correcta
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
@@ -16,21 +16,22 @@ class GroupRepository {
     private val groupsCollection = db.collection("groups")
     private val sequencesCollection = db.collection("sequences")
 
-    private val _groups = MutableStateFlow<List<Group>>(emptyList())
-    val groups: StateFlow<List<Group>> = _groups.asStateFlow()
+    // Cambiamos List<Group> por List<TherapeuticGroup>
+    private val _groups = MutableStateFlow<List<TherapeuticGroup>>(emptyList())
+    val groups: StateFlow<List<TherapeuticGroup>> = _groups.asStateFlow()
 
-    // Parámetro createdBy eliminado
-    suspend fun createGroup(name: String): Result<Group> {
+    // Retorna Result<TherapeuticGroup>
+    suspend fun createGroup(name: String): Result<TherapeuticGroup> {
         return try {
             val nextSequence = getNextSequence("groups")
             val fullCode = nextSequence.toString().padStart(2, '0')
 
-            val newGroup = Group(
+            // Instanciamos TherapeuticGroup en lugar de Group
+            val newGroup = TherapeuticGroup(
                 id = UUID.randomUUID().toString(),
                 code = fullCode,
                 sequence = nextSequence,
                 name = name
-                // createdBy eliminado
             )
 
             groupsCollection.document(newGroup.id)
@@ -76,7 +77,8 @@ class GroupRepository {
                 .await()
 
             val groupsList = snapshot.documents.map { document ->
-                document.toObject(Group::class.java) ?: Group()
+                // Mapeamos a TherapeuticGroup
+                document.toObject(TherapeuticGroup::class.java) ?: TherapeuticGroup()
             }
 
             _groups.value = groupsList

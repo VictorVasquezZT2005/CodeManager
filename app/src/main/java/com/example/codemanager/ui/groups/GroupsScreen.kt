@@ -6,8 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Group // Icono genérico
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,12 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.codemanager.data.model.TherapeuticGroup // <-- IMPORTACIÓN CLAVE
 import com.example.codemanager.data.repository.GroupRepository
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
 fun GroupsScreen(
+    // Inyección usando la Factory correcta
     viewModel: GroupsViewModel = viewModel(factory = GroupsViewModelFactory(GroupRepository()))
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -28,11 +30,16 @@ fun GroupsScreen(
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
-    var currentGroup by remember { mutableStateOf<com.example.codemanager.data.model.Group?>(null) }
 
+    // Estado tipado con TherapeuticGroup
+    var currentGroup by remember { mutableStateOf<TherapeuticGroup?>(null) }
     var groupName by remember { mutableStateOf("") }
 
     // Mostrar mensajes
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Si prefieres usar SnackbarHost en un Scaffold (recomendado), o mantener tu lógica manual:
+    // Mantengo tu lógica de LaunchedEffect con delay para no romper tu estructura actual
     LaunchedEffect(message) {
         if (message != null) {
             kotlinx.coroutines.delay(3000)
@@ -40,20 +47,19 @@ fun GroupsScreen(
         }
     }
 
-    // Diálogo para crear grupo
+    // --- DIÁLOGO CREAR ---
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
             title = { Text("Crear Grupo Terapéutico") },
             text = {
                 Column {
-                    // Campo de nombre
                     OutlinedTextField(
                         value = groupName,
                         onValueChange = { groupName = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Nombre del grupo *") },
-                        placeholder = { Text("Ej: Grupo de apoyo emocional") },
+                        placeholder = { Text("Ej: Analgésicos") },
                         singleLine = true
                     )
                 }
@@ -62,16 +68,14 @@ fun GroupsScreen(
                 Button(
                     onClick = {
                         if (groupName.isNotBlank()) {
-                            viewModel.createGroup(
-                                name = groupName,
-                            )
+                            viewModel.createGroup(name = groupName)
                             groupName = ""
                         }
                         showCreateDialog = false
                     },
                     enabled = groupName.isNotBlank()
                 ) {
-                    Text("Crear Grupo")
+                    Text("Crear")
                 }
             },
             dismissButton = {
@@ -85,7 +89,7 @@ fun GroupsScreen(
         )
     }
 
-    // Diálogo para editar grupo
+    // --- DIÁLOGO EDITAR ---
     if (showEditDialog && currentGroup != null) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
@@ -100,12 +104,11 @@ fun GroupsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Campo de nombre
                     OutlinedTextField(
                         value = groupName,
                         onValueChange = { groupName = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Nombre del grupo *") },
+                        label = { Text("Nombre del grupo") },
                         singleLine = true
                     )
                 }
@@ -124,7 +127,7 @@ fun GroupsScreen(
                     },
                     enabled = groupName.isNotBlank()
                 ) {
-                    Text("Guardar Cambios")
+                    Text("Guardar")
                 }
             },
             dismissButton = {
@@ -138,9 +141,7 @@ fun GroupsScreen(
         )
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize()
-    ) {
+    Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -148,31 +149,24 @@ fun GroupsScreen(
         ) {
             // Header
             Text(
-                text = "Gestión de Grupos Terapéuticos",
+                text = "Grupos Terapéuticos",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botón para crear nuevo grupo
+            // Botón Crear
             Button(
-                onClick = {
-                    showCreateDialog = true
-                },
+                onClick = { showCreateDialog = true },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isLoading,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary)
                 } else {
-                    Icon(Icons.Default.Add, contentDescription = "Crear grupo")
+                    Icon(Icons.Default.Add, contentDescription = null)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Crear Nuevo Grupo")
@@ -180,15 +174,11 @@ fun GroupsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Mostrar mensaje
+            // Mensaje de Error/Éxito (Banner)
             if (message != null) {
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Text(
                         text = message!!,
@@ -198,23 +188,17 @@ fun GroupsScreen(
                 }
             }
 
-            // Lista de grupos
+            // Lista
             if (uiState.isLoading && uiState.groups.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             } else if (uiState.groups.isNotEmpty()) {
                 Text(
-                    text = "Grupos creados (${uiState.groups.size})",
+                    text = "Total: ${uiState.groups.size}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-
                 Spacer(modifier = Modifier.height(8.dp))
 
                 LazyColumn(
@@ -234,32 +218,10 @@ fun GroupsScreen(
                     }
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            Icons.Default.Group,
-                            contentDescription = "Sin grupos",
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "No hay grupos creados",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Presiona 'Crear Nuevo Grupo' para comenzar",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                Box(modifier = Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Group, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.surfaceVariant)
+                        Text("No hay grupos registrados", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -269,39 +231,27 @@ fun GroupsScreen(
 
 @Composable
 fun GroupItem(
-    group: com.example.codemanager.data.model.Group,
+    group: TherapeuticGroup, // <-- TIPO ACTUALIZADO
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    // Mostrar el código del grupo (01, 02, 03, etc.)
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Grupo ${group.code}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                        text = "Código: ${group.code}",
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
-
                     Spacer(modifier = Modifier.height(4.dp))
-
                     Text(
                         text = group.name,
                         style = MaterialTheme.typography.titleMedium,
@@ -310,35 +260,20 @@ fun GroupItem(
                 }
 
                 Row {
-                    IconButton(
-                        onClick = onEdit,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "Editar grupo",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Editar", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Eliminar grupo",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "Borrar", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                     }
                 }
             }
 
             if (group.createdAt > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
-                // --- CAMBIO AQUÍ: hh:mm a (formato 12 horas) ---
+                val dateFormat = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault())
                 Text(
-                    text = "Creado: ${SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(group.createdAt))}",
+                    text = "Creado: ${dateFormat.format(Date(group.createdAt))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

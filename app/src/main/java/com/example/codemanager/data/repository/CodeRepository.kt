@@ -1,7 +1,8 @@
-// data/repository/CodeRepository.kt
 package com.example.codemanager.data.repository
 
 import com.example.codemanager.data.model.Code
+import com.example.codemanager.data.model.TherapeuticGroup
+import com.example.codemanager.data.model.Warehouse
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
@@ -16,117 +17,138 @@ class CodeRepository {
     private val db: FirebaseFirestore = Firebase.firestore
     private val codesCollection = db.collection("codes")
     private val sequencesCollection = db.collection("sequences")
+    private val groupsCollection = db.collection("groups")
+    private val warehousesCollection = db.collection("warehouses")
 
     private val _codes = MutableStateFlow<List<Code>>(emptyList())
     val codes: StateFlow<List<Code>> = _codes.asStateFlow()
-
-    suspend fun generateCode(prefix: String, description: String = "", createdBy: String = ""): Result<Code> {
-        return try {
-            // Obtener el próximo número de secuencia para este prefijo desde Firestore
-            val nextSequence = getNextSequence(prefix)
-
-            // Formatear el código: "62-00001"
-            val formattedSequence = nextSequence.toString().padStart(5, '0')
-            val fullCode = "$prefix-$formattedSequence"
-
-            val newCode = Code(
-                id = UUID.randomUUID().toString(),
-                code = fullCode,
-                prefix = prefix,
-                sequence = nextSequence,
-                description = description,
-                createdBy = createdBy
-            )
-
-            // Guardar en Firestore
-            codesCollection.document(newCode.id)
-                .set(newCode)
-                .await()
-
-            // Actualizar la lista local
-            loadCodes()
-
-            Result.success(newCode)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    private suspend fun getNextSequence(prefix: String): Int {
-        return try {
-            val sequenceDoc = sequencesCollection.document(prefix).get().await()
-            if (sequenceDoc.exists()) {
-                val currentSequence = sequenceDoc.getLong("lastSequence")?.toInt() ?: 0
-                val nextSequence = currentSequence + 1
-
-                // Actualizar la secuencia en Firestore
-                sequencesCollection.document(prefix)
-                    .set(mapOf("lastSequence" to nextSequence))
-                    .await()
-
-                nextSequence
-            } else {
-                // Crear nuevo documento de secuencia
-                sequencesCollection.document(prefix)
-                    .set(mapOf("lastSequence" to 1))
-                    .await()
-                1
-            }
-        } catch (e: Exception) {
-            throw Exception("Error al obtener secuencia: ${e.message}")
-        }
-    }
 
     suspend fun loadCodes() {
         try {
             val snapshot = codesCollection
                 .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .get()
-                .await()
-
-            val codesList = snapshot.documents.map { document ->
-                document.toObject(Code::class.java) ?: Code()
-            }
-
-            _codes.value = codesList
-        } catch (e: Exception) {
-            // Manejar error, puedes loggearlo o mostrar un mensaje
-            println("Error cargando códigos: ${e.message}")
-        }
+                .get().await()
+            _codes.value = snapshot.toObjects(Code::class.java)
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
-    suspend fun getCodesByPrefix(prefix: String): List<Code> {
+    // Lectura robusta de grupos (evita crasheos por datos nulos)
+    suspend fun getGroups(): List<TherapeuticGroup> {
         return try {
-            val snapshot = codesCollection
-                .whereEqualTo("prefix", prefix)
-                .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .get()
-                .await()
-
-            snapshot.documents.map { document ->
-                document.toObject(Code::class.java) ?: Code()
+            val snapshot = groupsCollection.orderBy("code").get().await()
+            snapshot.documents.mapNotNull { doc ->
+                try {
+                    val id = doc.getString("id") ?: doc.id
+                    val name = doc.getString("name") ?: "Sin Nombre"
+                    val code = doc.getString("code") ?: "00"
+                    val sequence = doc.getLong("sequence")?.toInt() ?: 0
+                    TherapeuticGroup(id = id, name = name, code = code, sequence = sequence)
+                } catch (e: Exception) { null }
             }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    // Lectura robusta de almacenes
+    suspend fun getWarehouses(): List<Warehouse> {
+        return try {
+            val snapshot = warehousesCollection.orderBy("name").get().await()
+            snapshot.documents.mapNotNull { doc ->
+                try {
+                    val id = doc.getString("id") ?: doc.id
+                    val name = doc.getString("name") ?: "Sin Nombre"
+                    val code = doc.getString("code") ?: "S/C"
+                    val type = doc.getString("type") ?: "estante"
+                    val levelNumber = doc.getLong("levelNumber")?.toInt() ?: 1
+                    val itemNumber = doc.getLong("itemNumber")?.toInt() ?: 1
+                    val createdBy = doc.getString("createdBy") ?: ""
+
+                    // Soporte híbrido para Timestamp y Long
+                    val createdAt = try {
+                        doc.getLong("createdAt")
+                            ?: doc.getTimestamp("createdAt")?.toDate()?.time
+                            ?: System.currentTimeMillis()
+                    } catch (e: Exception) { System.currentTimeMillis() }
+
+                    Warehouse(
+                        id = id, code = code, name = name, type = type,
+                        levelNumber = levelNumber, itemNumber = itemNumber,
+                        createdBy = createdBy, createdAt = createdAt
+                    )
+                } catch (e: Exception) { null }
+            }
+        } catch (e: Exception) { emptyList() }
     }
 
     suspend fun deleteCode(codeId: String): Result<Boolean> {
         return try {
             codesCollection.document(codeId).delete().await()
-            loadCodes() // Recargar la lista después de eliminar
+            loadCodes()
             Result.success(true)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        } catch (e: Exception) { Result.failure(e) }
     }
 
-    suspend fun getCodeById(codeId: String): Code? {
+    // Generar código simple (62 / 70)
+    suspend fun generateStandardCode(prefix: String, description: String, createdBy: String): Result<Code> {
         return try {
-            val document = codesCollection.document(codeId).get().await()
-            document.toObject(Code::class.java)
-        } catch (e: Exception) {
-            null
-        }
+            val nextSequence = getNextSequence(prefix)
+            val formattedSequence = nextSequence.toString().padStart(5, '0')
+            val fullCode = "$prefix-$formattedSequence"
+            saveCode(fullCode, prefix, nextSequence, description, createdBy)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    // Generar código compuesto (00-XX-XXXX / 01-XX-XXXX)
+    suspend fun generateCompositeCode(
+        rootPrefix: String, // Recibe "00" o "01"
+        group: TherapeuticGroup,
+        warehouse: Warehouse,
+        description: String,
+        createdBy: String,
+        internalPrefix: String // "MED" o "DESC"
+    ): Result<Code> {
+        return try {
+            // Creamos una secuencia única para esta combinación exacta
+            // Ej: "01-05-0102" (Descartables - Grupo 05 - Almacén 0102)
+            val sequenceKey = "$rootPrefix-${group.code}-${warehouse.code}"
+
+            val nextSequence = getNextSequence(sequenceKey)
+
+            val formattedGroup = group.code.padStart(2, '0')
+            val formattedWarehouse = warehouse.code
+            val formattedSequence = nextSequence.toString().padStart(4, '0')
+
+            // Armamos el código final: 01-05-0102-0001
+            val fullCode = "$rootPrefix-$formattedGroup-$formattedWarehouse-$formattedSequence"
+
+            saveCode(fullCode, internalPrefix, nextSequence, description, createdBy)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    private suspend fun saveCode(fullCode: String, prefix: String, sequence: Int, description: String, createdBy: String): Result<Code> {
+        val newCode = Code(
+            id = UUID.randomUUID().toString(),
+            code = fullCode,
+            prefix = prefix,
+            sequence = sequence,
+            description = description,
+            createdBy = createdBy
+        )
+        codesCollection.document(newCode.id).set(newCode).await()
+        loadCodes()
+        return Result.success(newCode)
+    }
+
+    private suspend fun getNextSequence(docId: String): Int {
+        val docRef = sequencesCollection.document(docId)
+        return db.runTransaction { transaction ->
+            val snapshot = transaction.get(docRef)
+            val newSequence = if (snapshot.exists()) {
+                (snapshot.getLong("lastSequence") ?: 0) + 1
+            } else {
+                1
+            }
+            transaction.set(docRef, mapOf("lastSequence" to newSequence))
+            newSequence
+        }.await().toInt()
     }
 }

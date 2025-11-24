@@ -1,8 +1,9 @@
 package com.example.codemanager.ui.groups
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.codemanager.data.model.Group
+import com.example.codemanager.data.model.TherapeuticGroup // <-- Importación corregida
 import com.example.codemanager.data.repository.GroupRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -11,7 +12,7 @@ import kotlinx.coroutines.launch
 
 class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<GroupsUiState>(GroupsUiState())
+    private val _uiState = MutableStateFlow(GroupsUiState())
     val uiState: StateFlow<GroupsUiState> = _uiState.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
@@ -26,6 +27,7 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
         viewModelScope.launch {
             try {
                 groupRepository.loadGroups()
+                // Observamos la lista de TherapeuticGroup
                 groupRepository.groups.collect { groups ->
                     _uiState.value = _uiState.value.copy(
                         groups = groups,
@@ -39,11 +41,9 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
         }
     }
 
-    // Parámetro createdBy eliminado
     fun createGroup(name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            // Llamada actualizada al repositorio
             val result = groupRepository.createGroup(name)
             _uiState.value = _uiState.value.copy(isLoading = false)
 
@@ -88,7 +88,19 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
     }
 }
 
+// Actualizamos el State para usar TherapeuticGroup
 data class GroupsUiState(
-    val groups: List<Group> = emptyList(),
+    val groups: List<TherapeuticGroup> = emptyList(),
     val isLoading: Boolean = false
 )
+
+// --- FACTORY INCLUIDA AQUÍ MISMO ---
+class GroupsViewModelFactory(private val repository: GroupRepository) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(GroupsViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return GroupsViewModel(repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
