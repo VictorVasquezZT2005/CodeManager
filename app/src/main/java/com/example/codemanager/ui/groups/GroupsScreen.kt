@@ -1,4 +1,3 @@
-// ui/groups/GroupsScreen.kt
 package com.example.codemanager.ui.groups
 
 import androidx.compose.foundation.layout.*
@@ -32,7 +31,6 @@ fun GroupsScreen(
     var currentGroup by remember { mutableStateOf<com.example.codemanager.data.model.Group?>(null) }
 
     var groupName by remember { mutableStateOf("") }
-    var groupDescription by remember { mutableStateOf("") }
 
     // Mostrar mensajes
     LaunchedEffect(message) {
@@ -49,13 +47,7 @@ fun GroupsScreen(
             title = { Text("Crear Grupo Terapéutico") },
             text = {
                 Column {
-                    Text(
-                        text = "Código: Autoasignado (01, 02, 03, ...)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
+                    // Texto de "Código autoasignado" eliminado
 
                     // Campo de nombre
                     OutlinedTextField(
@@ -66,19 +58,6 @@ fun GroupsScreen(
                         placeholder = { Text("Ej: Grupo de apoyo emocional") },
                         singleLine = true
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Campo de descripción
-                    OutlinedTextField(
-                        value = groupDescription,
-                        onValueChange = { groupDescription = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Descripción") },
-                        placeholder = { Text("Ej: Grupo para manejo de ansiedad y estrés") },
-                        singleLine = false,
-                        maxLines = 3
-                    )
                 }
             },
             confirmButton = {
@@ -87,11 +66,9 @@ fun GroupsScreen(
                         if (groupName.isNotBlank()) {
                             viewModel.createGroup(
                                 name = groupName,
-                                description = groupDescription,
                                 createdBy = "current_user_id"
                             )
                             groupName = ""
-                            groupDescription = ""
                         }
                         showCreateDialog = false
                     },
@@ -103,7 +80,6 @@ fun GroupsScreen(
             dismissButton = {
                 TextButton(onClick = {
                     groupName = ""
-                    groupDescription = ""
                     showCreateDialog = false
                 }) {
                     Text("Cancelar")
@@ -135,18 +111,6 @@ fun GroupsScreen(
                         label = { Text("Nombre del grupo *") },
                         singleLine = true
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Campo de descripción
-                    OutlinedTextField(
-                        value = groupDescription,
-                        onValueChange = { groupDescription = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Descripción") },
-                        singleLine = false,
-                        maxLines = 3
-                    )
                 }
             },
             confirmButton = {
@@ -155,8 +119,7 @@ fun GroupsScreen(
                         if (groupName.isNotBlank() && currentGroup != null) {
                             viewModel.updateGroup(
                                 groupId = currentGroup!!.id,
-                                name = groupName,
-                                description = groupDescription
+                                name = groupName
                             )
                         }
                         showEditDialog = false
@@ -193,13 +156,7 @@ fun GroupsScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Código: Autoasignado (01, 02, 03, ...)",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // Texto de "Código autoasignado" eliminado
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -275,7 +232,6 @@ fun GroupsScreen(
                             onEdit = {
                                 currentGroup = group
                                 groupName = group.name
-                                groupDescription = group.description
                                 showEditDialog = true
                             },
                             onDelete = { viewModel.deleteGroup(group.id) }
@@ -356,15 +312,6 @@ fun GroupItem(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-
-                    if (group.description.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = group.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
 
                     Spacer(modifier = Modifier.height(4.dp))
 

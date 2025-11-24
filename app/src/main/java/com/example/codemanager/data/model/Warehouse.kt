@@ -2,11 +2,11 @@ package com.example.codemanager.data.model
 
 data class Warehouse(
     val id: String = "",
-    val code: String = "", // Generado automáticamente: {nivel}{numero}
+    val code: String = "",
     val name: String = "",
-    val type: String = "", // Solo "estante" o "refrigerador"
+    val type: String = "",
     val levelNumber: Int = 1, // 1-10
-    val itemNumber: Int = 1, // 1-30
+    val itemNumber: Int = 1, // 1-30 (Esto es el número de Estante)
     val createdBy: String = "",
     val createdAt: Long = System.currentTimeMillis()
 ) {
@@ -18,7 +18,11 @@ data class Warehouse(
         fun generateCode(level: Int, itemNumber: Int): String {
             val levelStr = level.toString().padStart(2, '0')
             val itemStr = itemNumber.toString().padStart(2, '0')
-            return "$levelStr$itemStr" // Solo números: "0101", "0115", "1001", etc.
+
+            // --- CORRECCIÓN AQUÍ ---
+            // Antes: return "$levelStr$itemStr"
+            // Ahora: Estante (item) va primero, luego el Nivel
+            return "$itemStr$levelStr"
         }
 
         fun getTypeDisplayName(type: String): String {
@@ -44,10 +48,11 @@ data class Warehouse(
     }
 
     fun getFormattedLocation(): String {
-        return "Nivel ${levelNumber.toString().padStart(2, '0')} - ${getTypeDisplayName(type)} ${itemNumber.toString().padStart(2, '0')}"
+        // También invertí el texto aquí para que coincida con tu lógica visual: Estante X - Nivel Y
+        return "${getTypeDisplayName(type)} ${itemNumber.toString().padStart(2, '0')} - Nivel ${levelNumber.toString().padStart(2, '0')}"
     }
 
     fun getDisplayCode(): String {
-        return "${getTypeDisplayName(type)} $code" // Ej: "Estante 0101"
+        return "${getTypeDisplayName(type)} $code" // Ej: "Estante 0110"
     }
 }

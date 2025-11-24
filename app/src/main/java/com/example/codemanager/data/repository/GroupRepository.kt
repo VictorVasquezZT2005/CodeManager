@@ -1,4 +1,3 @@
-// data/repository/GroupRepository.kt
 package com.example.codemanager.data.repository
 
 import com.example.codemanager.data.model.Group
@@ -20,12 +19,10 @@ class GroupRepository {
     private val _groups = MutableStateFlow<List<Group>>(emptyList())
     val groups: StateFlow<List<Group>> = _groups.asStateFlow()
 
-    suspend fun createGroup(name: String, description: String = "", createdBy: String = ""): Result<Group> {
+    // Se eliminó el parámetro description
+    suspend fun createGroup(name: String, createdBy: String = ""): Result<Group> {
         return try {
-            // Obtener el próximo número de secuencia para grupos
             val nextSequence = getNextSequence("groups")
-
-            // Formatear el código: "01", "02", "03", etc.
             val fullCode = nextSequence.toString().padStart(2, '0')
 
             val newGroup = Group(
@@ -33,16 +30,14 @@ class GroupRepository {
                 code = fullCode,
                 sequence = nextSequence,
                 name = name,
-                description = description,
+                // description eliminado
                 createdBy = createdBy
             )
 
-            // Guardar en Firestore
             groupsCollection.document(newGroup.id)
                 .set(newGroup)
                 .await()
 
-            // Actualizar la lista local
             loadGroups()
 
             Result.success(newGroup)
@@ -58,14 +53,12 @@ class GroupRepository {
                 val currentSequence = sequenceDoc.getLong("lastSequence")?.toInt() ?: 0
                 val nextSequence = currentSequence + 1
 
-                // Actualizar la secuencia en Firestore
                 sequencesCollection.document(prefix)
                     .set(mapOf("lastSequence" to nextSequence))
                     .await()
 
                 nextSequence
             } else {
-                // Crear nuevo documento de secuencia
                 sequencesCollection.document(prefix)
                     .set(mapOf("lastSequence" to 1))
                     .await()
@@ -96,21 +89,19 @@ class GroupRepository {
     suspend fun deleteGroup(groupId: String): Result<Boolean> {
         return try {
             groupsCollection.document(groupId).delete().await()
-            loadGroups() // Recargar la lista después de eliminar
+            loadGroups()
             Result.success(true)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun updateGroup(groupId: String, name: String, description: String): Result<Boolean> {
+    // Se eliminó el parámetro description
+    suspend fun updateGroup(groupId: String, name: String): Result<Boolean> {
         return try {
             groupsCollection.document(groupId)
                 .update(
-                    mapOf(
-                        "name" to name,
-                        "description" to description
-                    )
+                    mapOf("name" to name) // Ya no actualizamos descripción
                 )
                 .await()
             loadGroups()

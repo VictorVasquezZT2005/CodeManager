@@ -3,7 +3,6 @@ package com.example.codemanager.data.repository
 import com.example.codemanager.data.model.Warehouse
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 
 class WarehouseRepository {
@@ -18,7 +17,7 @@ class WarehouseRepository {
     suspend fun getAllWarehouses(): Result<List<Warehouse>> {
         return try {
             val snapshot = warehousesCollection
-                .orderBy("id")
+                .orderBy("id") // Puedes cambiar esto por "createdAt" si quieres orden cronológico
                 .get()
                 .await()
 
@@ -52,7 +51,7 @@ class WarehouseRepository {
 
     suspend fun createWarehouse(warehouse: Warehouse): Result<String> {
         return try {
-            // Verificar si el código ya existe
+            // Verificar si el código ya existe para ese tipo
             val existingWarehouse = warehousesCollection
                 .whereEqualTo("code", warehouse.code)
                 .whereEqualTo("type", warehouse.type)
@@ -64,7 +63,7 @@ class WarehouseRepository {
             }
 
             val warehouseData = warehouse.toMap().toMutableMap().apply {
-                put("createdAt", Timestamp.now())
+                put("createdAt", Timestamp.now()) // Se guarda como Timestamp
             }
 
             // Usar el ID del warehouse como ID del documento
@@ -78,6 +77,8 @@ class WarehouseRepository {
     suspend fun updateWarehouse(warehouseId: String, warehouse: Warehouse): Result<Unit> {
         return try {
             val warehouseData = warehouse.toMap().toMutableMap().apply {
+                // Al actualizar, mantenemos la fecha de creación original si es posible,
+                // o actualizamos si esa es tu lógica. Aquí he dejado tu lógica original:
                 put("createdAt", Timestamp.now())
             }
 
@@ -97,6 +98,7 @@ class WarehouseRepository {
         }
     }
 
+    // --- FUNCIÓN CORREGIDA ---
     private fun com.google.firebase.firestore.DocumentSnapshot.toWarehouse(): Warehouse? {
         return try {
             val id = getString("id") ?: return null
@@ -106,7 +108,10 @@ class WarehouseRepository {
             val levelNumber = getLong("levelNumber")?.toInt() ?: 1
             val itemNumber = getLong("itemNumber")?.toInt() ?: 1
             val createdBy = getString("createdBy") ?: ""
-            val createdAt = getLong("createdAt") ?: System.currentTimeMillis()
+
+            // CORRECCIÓN: Leer como Timestamp de Firebase y convertir a Long (milisegundos)
+            val timestamp = getTimestamp("createdAt")
+            val createdAt = timestamp?.toDate()?.time ?: System.currentTimeMillis()
 
             Warehouse(
                 id = id,
@@ -119,6 +124,7 @@ class WarehouseRepository {
                 createdAt = createdAt
             )
         } catch (e: Exception) {
+            e.printStackTrace() // Útil para ver errores en Logcat
             null
         }
     }

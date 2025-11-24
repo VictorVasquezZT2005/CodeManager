@@ -42,9 +42,6 @@ class WarehousesViewModel(
             repository.getAllWarehouses().fold(
                 onSuccess = { warehouses ->
                     println("📦 DEBUG: Almacenes cargados: ${warehouses.size}")
-                    warehouses.forEach { w ->
-                        println("  - ${w.type} ${w.code}: ${w.name}")
-                    }
 
                     // Actualizar el estado con todos los almacenes
                     _uiState.value = _uiState.value.copy(
@@ -52,12 +49,11 @@ class WarehousesViewModel(
                         isLoading = false
                     )
 
-                    // Aplicar filtros inmediatamente después de cargar
+                    // Aplicar filtros y calcular ubicación
                     applyFiltersAndUpdateState(warehouses)
                     calculateNextAvailableLocation()
                 },
                 onFailure = { exception ->
-                    println("❌ DEBUG: Error al cargar: ${exception.message}")
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         error = "Error al cargar almacenes: ${exception.message}"
@@ -74,8 +70,7 @@ class WarehousesViewModel(
             repository.createWarehouse(warehouse).fold(
                 onSuccess = {
                     _message.value = "${Warehouse.getTypeDisplayName(warehouse.type)} creado exitosamente"
-                    // Recargar inmediatamente después de crear
-                    loadWarehouses()
+                    loadWarehouses() // Recargar para actualizar lista y siguiente ubicación
                 },
                 onFailure = { exception ->
                     _uiState.value = _uiState.value.copy(
@@ -148,8 +143,8 @@ class WarehousesViewModel(
 
             val (level, itemNumber) = nextLocation
 
-            // Generar ID con UUID
             val warehouseId = java.util.UUID.randomUUID().toString()
+            // generateCode ahora usa la lógica invertida del Modelo (Item + Nivel)
             val code = Warehouse.generateCode(level, itemNumber)
 
             val warehouse = Warehouse(
@@ -166,37 +161,31 @@ class WarehousesViewModel(
         }
     }
 
+    // --- CORRECCIÓN CLAVE AQUÍ ---
     private fun calculateNextAvailableLocation() {
         val currentType = _uiState.value.selectedType
         val warehousesOfType = _uiState.value.warehouses.filter { it.type == currentType }
 
-        println("📍 DEBUG: Calculando siguiente ubicación para $currentType")
-        println("📍 DEBUG: Almacenes del tipo: ${warehousesOfType.size}")
+        println("📍 DEBUG: Calculando siguiente ubicación (Llenado vertical)")
 
-        if (warehousesOfType.isEmpty()) {
-            println("📍 DEBUG: Primer almacén - Nivel 1, Item 1")
-            _uiState.value = _uiState.value.copy(
-                nextAvailableLocation = Pair(1, 1)
-            )
-            return
-        }
+        // Bucle Principal: Estantes/Items (1 al 30)
+        for (itemNumber in 1..Warehouse.MAX_ITEMS_PER_LEVEL) {
 
-        for (level in 1..Warehouse.MAX_LEVELS) {
-            val itemsInLevel = warehousesOfType.filter { it.levelNumber == level }
-            println("📍 DEBUG: Nivel $level - Items: ${itemsInLevel.size}")
+            // Bucle Secundario: Niveles (1 al 10)
+            // Esto asegura que llenamos el Estante 1 completo antes de pasar al Estante 2
+            for (level in 1..Warehouse.MAX_LEVELS) {
 
-            if (itemsInLevel.size < Warehouse.MAX_ITEMS_PER_LEVEL) {
-                val usedNumbers = itemsInLevel.map { it.itemNumber }.toSortedSet()
-                println("📍 DEBUG: Números usados en nivel $level: $usedNumbers")
+                // Verificamos si existe un almacén con este item Y este nivel
+                val exists = warehousesOfType.any {
+                    it.itemNumber == itemNumber && it.levelNumber == level
+                }
 
-                for (itemNumber in 1..Warehouse.MAX_ITEMS_PER_LEVEL) {
-                    if (!usedNumbers.contains(itemNumber)) {
-                        println("📍 DEBUG: Siguiente ubicación disponible: Nivel $level, Item $itemNumber")
-                        _uiState.value = _uiState.value.copy(
-                            nextAvailableLocation = Pair(level, itemNumber)
-                        )
-                        return
-                    }
+                if (!exists) {
+                    println("📍 DEBUG: Disponible encontrado -> Estante $itemNumber, Nivel $level")
+                    _uiState.value = _uiState.value.copy(
+                        nextAvailableLocation = Pair(level, itemNumber)
+                    )
+                    return
                 }
             }
         }
@@ -206,7 +195,6 @@ class WarehousesViewModel(
     }
 
     fun setSelectedType(type: String) {
-        println("🎯 DEBUG: Cambiando tipo a: $type")
         _uiState.value = _uiState.value.copy(selectedType = type)
         applyFiltersAndUpdateState()
         calculateNextAvailableLocation()
@@ -214,21 +202,8 @@ class WarehousesViewModel(
 
     private fun applyFiltersAndUpdateState(warehouses: List<Warehouse>? = null) {
         val warehousesToFilter = warehouses ?: _uiState.value.warehouses
-        val filtered = applyFilters(warehousesToFilter)
-
-        println("🔍 DEBUG: Aplicando filtros")
-        println("🔍 DEBUG: Tipo seleccionado: ${_uiState.value.selectedType}")
-        println("🔍 DEBUG: Total almacenes: ${warehousesToFilter.size}")
-        println("🔍 DEBUG: Almacenes filtrados: ${filtered.size}")
-        filtered.forEach { w ->
-            println("  - ${w.type} ${w.code}: ${w.name}")
-        }
-
+        val filtered = warehousesToFilter.filter { it.type == _uiState.value.selectedType }
         _uiState.value = _uiState.value.copy(filteredWarehouses = filtered)
-    }
-
-    private fun applyFilters(warehouses: List<Warehouse>): List<Warehouse> {
-        return warehouses.filter { it.type == _uiState.value.selectedType }
     }
 
     fun showAddDialog() {

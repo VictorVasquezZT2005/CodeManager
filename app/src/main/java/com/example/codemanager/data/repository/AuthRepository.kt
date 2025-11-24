@@ -14,7 +14,7 @@ class AuthRepository {
     private val auth: FirebaseAuth = Firebase.auth
     private val db: FirebaseFirestore = Firebase.firestore
 
-    // Método para iniciar sesión - nombre corregido a signIn
+    // Iniciar sesión
     suspend fun signIn(email: String, password: String): Result<Unit> {
         return try {
             auth.signInWithEmailAndPassword(email, password).await()
@@ -24,7 +24,7 @@ class AuthRepository {
         }
     }
 
-    // Método para obtener el usuario actual - nombre corregido a getCurrentUser
+    // Obtener usuario actual
     suspend fun getCurrentUser(): User? {
         return auth.currentUser?.let { firebaseUser ->
             try {
@@ -37,7 +37,7 @@ class AuthRepository {
                         id = firebaseUser.uid,
                         email = firebaseUser.email ?: "",
                         name = firebaseUser.displayName ?: firebaseUser.email?.split("@")?.first() ?: "",
-                        rol = "user"
+                        rol = "Usuario"
                     )
                     db.collection("users").document(firebaseUser.uid).set(newUser).await()
                     newUser
@@ -48,38 +48,30 @@ class AuthRepository {
         }
     }
 
-    // Método para verificar si hay usuario logueado
     fun isUserLoggedIn(): Boolean {
         return auth.currentUser != null
     }
 
-    // Método para cerrar sesión - nombre corregido a signOut
     fun signOut() {
         auth.signOut()
     }
 
-    // Métodos adicionales para gestión de usuarios (opcionales para el admin)
-
-    // Método para obtener todos los usuarios (solo para admins)
     suspend fun getAllUsers(): List<User> {
         return try {
             val snapshot = db.collection("users").get().await()
             snapshot.documents.map { document ->
                 document.toObject(User::class.java) ?: User()
-            }.filter { it.id.isNotEmpty() } // Filtrar usuarios válidos
+            }.filter { it.id.isNotEmpty() }
         } catch (e: Exception) {
             emptyList()
         }
     }
 
-    // Método para crear usuario (solo para admins)
     suspend fun createUser(email: String, password: String, name: String, rol: String): Result<User> {
         return try {
-            // Crear usuario en Firebase Auth
             val authResult = auth.createUserWithEmailAndPassword(email, password).await()
             val userId = authResult.user?.uid ?: throw Exception("Error al crear usuario")
 
-            // Crear documento en Firestore
             val newUser = User(
                 id = userId,
                 email = email,
@@ -94,7 +86,6 @@ class AuthRepository {
         }
     }
 
-    // Método para actualizar usuario
     suspend fun updateUser(userId: String, name: String, rol: String): Result<Unit> {
         return try {
             val updates = mapOf(
@@ -108,11 +99,16 @@ class AuthRepository {
         }
     }
 
-    // Método para eliminar usuario
+    // --- SEGURIDAD AGREGADA AQUÍ ---
     suspend fun deleteUser(userId: String): Result<Unit> {
         return try {
-            // IMPORTANTE: En producción, deberías eliminar también de Firebase Auth
-            // y manejar la seguridad con Firebase Rules
+            val currentUserId = auth.currentUser?.uid
+
+            // Verificación de seguridad: No permitir borrarse a uno mismo
+            if (currentUserId == userId) {
+                return Result.failure(Exception("No puedes eliminar tu propia cuenta mientras estás logueado."))
+            }
+
             db.collection("users").document(userId).delete().await()
             Result.success(Unit)
         } catch (e: Exception) {

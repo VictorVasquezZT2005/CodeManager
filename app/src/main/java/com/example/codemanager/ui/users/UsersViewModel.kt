@@ -13,11 +13,19 @@ class UsersViewModel(
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
-    private val _users = MutableStateFlow<List<User>>(emptyList())
-    val users: StateFlow<List<User>> = _users.asStateFlow()
+    // Lista completa (Base de datos)
+    private val _allUsers = MutableStateFlow<List<User>>(emptyList())
+
+    // Lista filtrada (UI)
+    private val _filteredUsers = MutableStateFlow<List<User>>(emptyList())
+    val users: StateFlow<List<User>> = _filteredUsers.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    // Filtro seleccionado (Por defecto "Usuario")
+    private val _selectedRole = MutableStateFlow("Usuario")
+    val selectedRole: StateFlow<String> = _selectedRole.asStateFlow()
 
     private val _showDialog = MutableStateFlow(false)
     val showDialog: StateFlow<Boolean> = _showDialog.asStateFlow()
@@ -28,7 +36,7 @@ class UsersViewModel(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    // Datos para nuevo usuario
+    // Campos del formulario
     private val _newUserName = MutableStateFlow("")
     val newUserName: StateFlow<String> = _newUserName.asStateFlow()
 
@@ -38,6 +46,7 @@ class UsersViewModel(
     private val _newUserPassword = MutableStateFlow("")
     val newUserPassword: StateFlow<String> = _newUserPassword.asStateFlow()
 
+    // Rol por defecto al crear
     private val _newUserRol = MutableStateFlow("Usuario")
     val newUserRol: StateFlow<String> = _newUserRol.asStateFlow()
 
@@ -50,16 +59,27 @@ class UsersViewModel(
         _errorMessage.value = null
         viewModelScope.launch {
             try {
-                // Obtener usuarios reales de Firestore
                 val usersList = authRepository.getAllUsers()
-                _users.value = usersList
+                _allUsers.value = usersList
+                applyFilter() // Aplicar filtro al cargar
             } catch (e: Exception) {
                 _errorMessage.value = "Error al cargar usuarios: ${e.message}"
-                _users.value = emptyList()
+                _allUsers.value = emptyList()
+                _filteredUsers.value = emptyList()
             } finally {
                 _isLoading.value = false
             }
         }
+    }
+
+    fun setSelectedRole(role: String) {
+        _selectedRole.value = role
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val currentRole = _selectedRole.value
+        _filteredUsers.value = _allUsers.value.filter { it.rol == currentRole }
     }
 
     fun showAddUserDialog() {
@@ -67,7 +87,8 @@ class UsersViewModel(
         _newUserName.value = ""
         _newUserEmail.value = ""
         _newUserPassword.value = ""
-        _newUserRol.value = "Usuario"
+        // Al abrir el diálogo, preseleccionamos el rol que estamos viendo en el filtro
+        _newUserRol.value = _selectedRole.value
         _showDialog.value = true
         _errorMessage.value = null
     }
@@ -108,7 +129,6 @@ class UsersViewModel(
             _errorMessage.value = "Todos los campos son requeridos"
             return
         }
-
         if (_newUserPassword.value.length < 6) {
             _errorMessage.value = "La contraseña debe tener al menos 6 caracteres"
             return
@@ -125,11 +145,10 @@ class UsersViewModel(
                 )
 
                 if (result.isSuccess) {
-                    // Recargar la lista de usuarios
                     loadUsersFromFirestore()
                     hideDialog()
                 } else {
-                    _errorMessage.value = "Error al crear usuario: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = "Error: ${result.exceptionOrNull()?.message}"
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Error: ${e.message}"
@@ -157,11 +176,10 @@ class UsersViewModel(
                 )
 
                 if (result.isSuccess) {
-                    // Recargar la lista de usuarios
                     loadUsersFromFirestore()
                     hideDialog()
                 } else {
-                    _errorMessage.value = "Error al actualizar usuario: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = "Error: ${result.exceptionOrNull()?.message}"
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Error: ${e.message}"
@@ -176,12 +194,10 @@ class UsersViewModel(
         viewModelScope.launch {
             try {
                 val result = authRepository.deleteUser(user.id)
-
                 if (result.isSuccess) {
-                    // Recargar la lista de usuarios
                     loadUsersFromFirestore()
                 } else {
-                    _errorMessage.value = "Error al eliminar usuario: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = "Error: ${result.exceptionOrNull()?.message}"
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Error: ${e.message}"

@@ -1,4 +1,3 @@
-// ui/groups/GroupsViewModel.kt
 package com.example.codemanager.ui.groups
 
 import androidx.lifecycle.ViewModel
@@ -27,7 +26,6 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
         viewModelScope.launch {
             try {
                 groupRepository.loadGroups()
-                // Observar cambios en el flow
                 groupRepository.groups.collect { groups ->
                     _uiState.value = _uiState.value.copy(
                         groups = groups,
@@ -41,10 +39,11 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
         }
     }
 
-    fun createGroup(name: String, description: String = "", createdBy: String = "") {
+    // Eliminado parámetro description
+    fun createGroup(name: String, createdBy: String = "") {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val result = groupRepository.createGroup(name, description, createdBy)
+            val result = groupRepository.createGroup(name, createdBy)
             _uiState.value = _uiState.value.copy(isLoading = false)
 
             if (result.isSuccess) {
@@ -69,10 +68,11 @@ class GroupsViewModel(private val groupRepository: GroupRepository) : ViewModel(
         }
     }
 
-    fun updateGroup(groupId: String, name: String, description: String) {
+    // Eliminado parámetro description
+    fun updateGroup(groupId: String, name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val result = groupRepository.updateGroup(groupId, name, description)
+            val result = groupRepository.updateGroup(groupId, name)
             _uiState.value = _uiState.value.copy(isLoading = false)
 
             if (result.isSuccess) {

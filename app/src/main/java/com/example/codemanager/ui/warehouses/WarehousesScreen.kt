@@ -385,9 +385,20 @@ fun AddWarehouseDialog(
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold
                             )
-                            Text(text = "Código: $nextCode")
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = "Código: $nextCode",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // --- CORRECCIÓN VISUAL: Invertido para coincidir con la lógica ---
+                            Text(text = "${Warehouse.getTypeDisplayName(selectedType)}: ${itemNumber.toString().padStart(2, '0')}")
                             Text(text = "Nivel: ${level.toString().padStart(2, '0')}")
-                            Text(text = "Número: ${itemNumber.toString().padStart(2, '0')}")
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -448,26 +459,6 @@ fun EditWarehouseDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Ubicación (no editable):",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(text = "Código: ${warehouse.code}")
-                        Text(text = "Nivel: ${warehouse.levelNumber.toString().padStart(2, '0')}")
-                        Text(text = "Número: ${warehouse.itemNumber.toString().padStart(2, '0')}")
-                    }
-                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
