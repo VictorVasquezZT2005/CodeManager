@@ -75,7 +75,6 @@ fun CodeManagerApp(
     warehouseRepository: WarehouseRepository
 ) {
     val uiState by authViewModel.uiState.collectAsState()
-    // val currentUser by authViewModel.currentUser.collectAsState() // No es estrictamente necesario aquí si no se usa
     val navController = rememberNavController()
 
     // Verificar si ya hay un usuario logueado al iniciar la app
@@ -106,24 +105,23 @@ fun CodeManagerApp(
                     ) {
                         composable("dashboard") {
                             DashboardScreen(
+                                // --- CORRECCIÓN AQUÍ: Pasamos el authViewModel ---
+                                authViewModel = authViewModel,
                                 onLogout = {
                                     authViewModel.signOut()
                                 }
                             )
                         }
 
-                        // --- AQUÍ ESTÁ LA CORRECCIÓN ---
                         composable("codes") {
                             val codesViewModel: CodesViewModel = viewModel(
                                 factory = CodesViewModelFactory(codeRepository)
                             )
-                            // Ahora pasamos ambos viewModels
                             CodesScreen(
                                 authViewModel = authViewModel,
                                 viewModel = codesViewModel
                             )
                         }
-                        // -------------------------------
 
                         composable("groups") {
                             val groupsViewModel: GroupsViewModel = viewModel(
@@ -131,12 +129,14 @@ fun CodeManagerApp(
                             )
                             GroupsScreen(viewModel = groupsViewModel)
                         }
+
                         composable("warehouses") {
                             val warehousesViewModel: WarehousesViewModel = viewModel(
                                 factory = WarehousesViewModelFactory()
                             )
                             WarehousesScreen(viewModel = warehousesViewModel)
                         }
+
                         composable("users") {
                             UsersScreen(
                                 authRepository = authRepository,
