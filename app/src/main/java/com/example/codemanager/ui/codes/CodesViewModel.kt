@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.codemanager.data.model.Code
-import com.example.codemanager.data.model.TherapeuticGroup
+import com.example.codemanager.data.model.Category // <-- Usamos Category
 import com.example.codemanager.data.model.Warehouse
 import com.example.codemanager.data.repository.CodeRepository
 import kotlinx.coroutines.CoroutineScope
@@ -21,8 +21,8 @@ import kotlinx.coroutines.launch
 enum class CodeType(val label: String, val prefix: String, val isComposite: Boolean) {
     EMERGENCY("Emergencia", "62", false),
     SERVICES("Servicios", "70", false),
-    MEDICINES("Medicamentos", "00", true),  // Raíz 00
-    DISPOSABLES("Descartables", "01", true) // Raíz 01 (CORREGIDO)
+    MEDICINES("Medicamentos", "00", true),
+    DISPOSABLES("Descartables", "01", true)
 }
 
 class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
@@ -30,27 +30,41 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(CodesUiState())
     val uiState = _uiState.asStateFlow()
 
-    // Selección de pestaña
     private val _selectedType = MutableStateFlow(CodeType.EMERGENCY)
     val selectedType = _selectedType.asStateFlow()
 
-    // Datos Auxiliares
-    private val _groups = MutableStateFlow<List<TherapeuticGroup>>(emptyList())
-    val groups = _groups.asStateFlow()
+    // --- CATEGORÍAS (Antes Grupos) ---
+    private val _categories = MutableStateFlow<List<Category>>(emptyList())
+    // No exponemos _categories directamente. Exponemos la lista filtrada:
 
+    // Filtramos las categorías según la pestaña seleccionada (Medicamentos vs Descartables)
+    val filteredCategoriesForSelection = _categories.combine(_selectedType) { all, type ->
+        // Si estamos en MEDICINES, mostramos solo type="MED"
+        // Si estamos en DISPOSABLES, mostramos solo type="DESC"
+        val filterKey = if (type == CodeType.MEDICINES) "MED" else if (type == CodeType.DISPOSABLES) "DESC" else ""
+
+        if (filterKey.isNotEmpty()) {
+            all.filter { it.type == filterKey }
+        } else {
+            emptyList()
+        }
+    }.asStateFlow(viewModelScope, emptyList())
+
+    // --- ALMACENES ---
     private val _warehouses = MutableStateFlow<List<Warehouse>>(emptyList())
+
     // Filtro para el tipo de almacén (estante vs refrigerador)
     private val _warehouseTypeFilter = MutableStateFlow("estante")
     val warehouseTypeFilter = _warehouseTypeFilter.asStateFlow()
 
-    // Lista de almacenes filtrada dinámicamente para el Dropdown
+    // Lista de almacenes filtrada dinámicamente
     val filteredWarehousesForSelection = _warehouses.combine(_warehouseTypeFilter) { all, type ->
         all.filter { it.type == type }
     }.asStateFlow(viewModelScope, emptyList())
 
-    // Selecciones del usuario
-    private val _selectedGroup = MutableStateFlow<TherapeuticGroup?>(null)
-    val selectedGroup = _selectedGroup.asStateFlow()
+    // --- SELECCIONES ---
+    private val _selectedCategory = MutableStateFlow<Category?>(null)
+    val selectedCategory = _selectedCategory.asStateFlow()
 
     private val _selectedWarehouse = MutableStateFlow<Warehouse?>(null)
     val selectedWarehouse = _selectedWarehouse.asStateFlow()
@@ -65,7 +79,7 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
 
     private fun loadAuxiliaryData() {
         viewModelScope.launch {
-            _groups.value = codeRepository.getGroups()
+            _categories.value = codeRepository.getCategories() // Usamos getCategories
             _warehouses.value = codeRepository.getWarehouses()
         }
     }
@@ -83,8 +97,8 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
 
     fun selectType(type: CodeType) {
         _selectedType.value = type
-        // Resetear selecciones al cambiar de pestaña
-        _selectedGroup.value = null
+        // Resetear selecciones
+        _selectedCategory.value = null
         _selectedWarehouse.value = null
         filterCodes()
     }
@@ -108,7 +122,7 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
         _selectedWarehouse.value = null
     }
 
-    fun setSelectedGroup(group: TherapeuticGroup) { _selectedGroup.value = group }
+    fun setSelectedCategory(category: Category) { _selectedCategory.value = category }
     fun setSelectedWarehouse(warehouse: Warehouse) { _selectedWarehouse.value = warehouse }
 
     fun generateCode(description: String, createdBy: String) {
@@ -117,27 +131,26 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
             val type = _selectedType.value
 
             val result = if (type.isComposite) {
-                // Lógica para 00 (Med) y 01 (Desc)
-                val group = _selectedGroup.value
+                // Lógica Compuesta (Med 00 / Desc 01)
+                val category = _selectedCategory.value
                 val warehouse = _selectedWarehouse.value
 
-                if (group != null && warehouse != null) {
-                    // Prefijo interno para la base de datos (para filtrar después)
+                if (category != null && warehouse != null) {
                     val internalPrefix = if (type == CodeType.MEDICINES) "MED" else "DESC"
 
                     codeRepository.generateCompositeCode(
-                        rootPrefix = type.prefix, // Aquí pasa "00" o "01"
-                        group = group,
+                        rootPrefix = type.prefix,
+                        category = category,
                         warehouse = warehouse,
                         description = description,
                         createdBy = createdBy,
                         internalPrefix = internalPrefix
                     )
                 } else {
-                    Result.failure(Exception("Faltan datos"))
+                    Result.failure(Exception("Faltan datos (Categoría o Almacén)"))
                 }
             } else {
-                // Lógica para 62 y 70
+                // Lógica Simple (62 / 70)
                 codeRepository.generateStandardCode(type.prefix, description, createdBy)
             }
 
@@ -158,15 +171,12 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
     fun clearMessage() { _message.value = null }
 }
 
-// --- EXTENSION FUNCTIONS PARA ARREGLAR ERRORES DE STATEFLOW ---
-
-// Permite usar .combine como función de extensión
+// --- HELPERS ---
 fun <T1, T2, R> Flow<T1>.combine(
     flow: Flow<T2>,
     transform: suspend (T1, T2) -> R
 ): Flow<R> = kotlinx.coroutines.flow.combine(this, flow, transform)
 
-// Permite convertir cualquier Flow a StateFlow fácilmente
 fun <T> Flow<T>.asStateFlow(
     scope: CoroutineScope,
     initialValue: T

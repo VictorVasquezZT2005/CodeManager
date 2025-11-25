@@ -39,7 +39,8 @@ fun NavBar(
         val items = listOf(
             NavItem("dashboard", "Dashboard", Icons.Default.Home),
             NavItem("codes", "Códigos", Icons.Default.Code),
-            NavItem("groups", "Grupos", Icons.Default.Group),
+            // --- CAMBIO: Grupos -> Categorías ---
+            NavItem("groups", "Categorías", Icons.Default.Category),
             NavItem("warehouses", "Almacenes", Icons.Default.Storage),
             NavItem("users", "Usuarios", Icons.Default.Person)
         )

@@ -1,7 +1,7 @@
 package com.example.codemanager.data.repository
 
 import com.example.codemanager.data.model.Code
-import com.example.codemanager.data.model.TherapeuticGroup
+import com.example.codemanager.data.model.Category // <-- Usamos Category
 import com.example.codemanager.data.model.Warehouse
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
@@ -17,7 +17,7 @@ class CodeRepository {
     private val db: FirebaseFirestore = Firebase.firestore
     private val codesCollection = db.collection("codes")
     private val sequencesCollection = db.collection("sequences")
-    private val groupsCollection = db.collection("groups")
+    private val groupsCollection = db.collection("groups") // Aquí están las categorías
     private val warehousesCollection = db.collection("warehouses")
 
     private val _codes = MutableStateFlow<List<Code>>(emptyList())
@@ -32,8 +32,8 @@ class CodeRepository {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // Lectura robusta de grupos (evita crasheos por datos nulos)
-    suspend fun getGroups(): List<TherapeuticGroup> {
+    // --- ACTUALIZADO: Lectura de Categorías (Antes Grupos) ---
+    suspend fun getCategories(): List<Category> {
         return try {
             val snapshot = groupsCollection.orderBy("code").get().await()
             snapshot.documents.mapNotNull { doc ->
@@ -42,13 +42,15 @@ class CodeRepository {
                     val name = doc.getString("name") ?: "Sin Nombre"
                     val code = doc.getString("code") ?: "00"
                     val sequence = doc.getLong("sequence")?.toInt() ?: 0
-                    TherapeuticGroup(id = id, name = name, code = code, sequence = sequence)
+                    val type = doc.getString("type") ?: "MED" // Importante para el filtro
+
+                    Category(id = id, name = name, code = code, sequence = sequence, type = type)
                 } catch (e: Exception) { null }
             }
         } catch (e: Exception) { emptyList() }
     }
 
-    // Lectura robusta de almacenes
+    // --- Lectura robusta de Almacenes ---
     suspend fun getWarehouses(): List<Warehouse> {
         return try {
             val snapshot = warehousesCollection.orderBy("name").get().await()
@@ -62,7 +64,6 @@ class CodeRepository {
                     val itemNumber = doc.getLong("itemNumber")?.toInt() ?: 1
                     val createdBy = doc.getString("createdBy") ?: ""
 
-                    // Soporte híbrido para Timestamp y Long
                     val createdAt = try {
                         doc.getLong("createdAt")
                             ?: doc.getTimestamp("createdAt")?.toDate()?.time
@@ -97,28 +98,26 @@ class CodeRepository {
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    // Generar código compuesto (00-XX-XXXX / 01-XX-XXXX)
+    // Generar código compuesto (00 para Med, 01 para Desc)
     suspend fun generateCompositeCode(
-        rootPrefix: String, // Recibe "00" o "01"
-        group: TherapeuticGroup,
+        rootPrefix: String,
+        category: Category, // Actualizado a Category
         warehouse: Warehouse,
         description: String,
         createdBy: String,
-        internalPrefix: String // "MED" o "DESC"
+        internalPrefix: String
     ): Result<Code> {
         return try {
-            // Creamos una secuencia única para esta combinación exacta
-            // Ej: "01-05-0102" (Descartables - Grupo 05 - Almacén 0102)
-            val sequenceKey = "$rootPrefix-${group.code}-${warehouse.code}"
-
+            // Secuencia única por combinación: "00-01-0102"
+            val sequenceKey = "$rootPrefix-${category.code}-${warehouse.code}"
             val nextSequence = getNextSequence(sequenceKey)
 
-            val formattedGroup = group.code.padStart(2, '0')
+            val formattedCategory = category.code.padStart(2, '0')
             val formattedWarehouse = warehouse.code
             val formattedSequence = nextSequence.toString().padStart(4, '0')
 
-            // Armamos el código final: 01-05-0102-0001
-            val fullCode = "$rootPrefix-$formattedGroup-$formattedWarehouse-$formattedSequence"
+            // Armamos: 00-01-0102-0001
+            val fullCode = "$rootPrefix-$formattedCategory-$formattedWarehouse-$formattedSequence"
 
             saveCode(fullCode, internalPrefix, nextSequence, description, createdBy)
         } catch (e: Exception) { Result.failure(e) }

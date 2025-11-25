@@ -21,7 +21,7 @@ import androidx.navigation.compose.rememberNavController
 // Repositorios
 import com.example.codemanager.data.repository.AuthRepository
 import com.example.codemanager.data.repository.CodeRepository
-import com.example.codemanager.data.repository.GroupRepository
+import com.example.codemanager.data.repository.CategoryRepository // <-- Actualizado
 import com.example.codemanager.data.repository.WarehouseRepository
 // Auth
 import com.example.codemanager.ui.auth.AuthViewModel
@@ -34,10 +34,10 @@ import com.example.codemanager.ui.codes.CodesViewModelFactory
 // Dashboard & Components
 import com.example.codemanager.ui.components.NavBar
 import com.example.codemanager.ui.dashboard.DashboardScreen
-// Groups
-import com.example.codemanager.ui.groups.GroupsScreen
-import com.example.codemanager.ui.groups.GroupsViewModel
-import com.example.codemanager.ui.groups.GroupsViewModelFactory
+// Categories (Antes Groups)
+import com.example.codemanager.ui.categories.CategoriesScreen
+import com.example.codemanager.ui.categories.CategoriesViewModel
+import com.example.codemanager.ui.categories.CategoriesViewModelFactory
 // Users
 import com.example.codemanager.ui.users.UsersScreen
 // Warehouses
@@ -49,13 +49,13 @@ import com.example.codemanager.ui.theme.CodeManagerTheme
 
 class MainActivity : ComponentActivity() {
 
-    // 1. Instancias Lazy de los repositorios (Singletons para la vida de la Activity)
+    // 1. Instancias Lazy de los repositorios
     private val authRepository by lazy { AuthRepository() }
     private val codeRepository by lazy { CodeRepository() }
-    private val groupRepository by lazy { GroupRepository() }
+    private val categoryRepository by lazy { CategoryRepository() } // <-- Renombrado
     private val warehouseRepository by lazy { WarehouseRepository() }
 
-    // 2. AuthViewModel se inicia al nivel de la Activity para mantener la sesión global
+    // 2. AuthViewModel
     private val authViewModel: AuthViewModel by viewModels {
         AuthViewModelFactory(authRepository)
     }
@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
                 authViewModel = authViewModel,
                 authRepository = authRepository,
                 codeRepository = codeRepository,
-                groupRepository = groupRepository,
+                categoryRepository = categoryRepository, // <-- Actualizado
                 warehouseRepository = warehouseRepository
             )
         }
@@ -80,13 +80,13 @@ fun CodeManagerApp(
     authViewModel: AuthViewModel,
     authRepository: AuthRepository,
     codeRepository: CodeRepository,
-    groupRepository: GroupRepository,
+    categoryRepository: CategoryRepository, // <-- Actualizado tipo
     warehouseRepository: WarehouseRepository
 ) {
     val uiState by authViewModel.uiState.collectAsState()
     val navController = rememberNavController()
 
-    // Verificar si ya hay un usuario logueado al iniciar la app
+    // Verificar sesión
     LaunchedEffect(Unit) {
         if (authRepository.isUserLoggedIn()) {
             authViewModel.setAuthenticated(true)
@@ -98,7 +98,6 @@ fun CodeManagerApp(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            // Lógica de navegación: Si está autenticado -> App Principal, si no -> Login
             if (uiState.isAuthenticated) {
                 Scaffold(
                     bottomBar = {
@@ -120,7 +119,6 @@ fun CodeManagerApp(
 
                         // --- CÓDIGOS ---
                         composable("codes") {
-                            // Inyección de CodeRepository
                             val codesViewModel: CodesViewModel = viewModel(
                                 factory = CodesViewModelFactory(codeRepository)
                             )
@@ -130,18 +128,18 @@ fun CodeManagerApp(
                             )
                         }
 
-                        // --- GRUPOS TERAPÉUTICOS ---
+                        // --- CATEGORÍAS (ANTES GRUPOS) ---
+                        // Mantenemos la ruta "groups" si tu NavBar la usa,
+                        // pero cargamos la pantalla de Categorías
                         composable("groups") {
-                            // Inyección de GroupRepository
-                            val groupsViewModel: GroupsViewModel = viewModel(
-                                factory = GroupsViewModelFactory(groupRepository)
+                            val categoriesViewModel: CategoriesViewModel = viewModel(
+                                factory = CategoriesViewModelFactory(categoryRepository)
                             )
-                            GroupsScreen(viewModel = groupsViewModel)
+                            CategoriesScreen(viewModel = categoriesViewModel)
                         }
 
                         // --- ALMACENES ---
                         composable("warehouses") {
-                            // Inyección de WarehouseRepository
                             val warehousesViewModel: WarehousesViewModel = viewModel(
                                 factory = WarehousesViewModelFactory(warehouseRepository)
                             )
@@ -158,7 +156,6 @@ fun CodeManagerApp(
                     }
                 }
             } else {
-                // Pantalla de Login
                 LoginScreen(viewModel = authViewModel)
             }
         }

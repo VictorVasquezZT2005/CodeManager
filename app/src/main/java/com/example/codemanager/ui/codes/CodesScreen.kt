@@ -5,7 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check // Icono check
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.codemanager.data.model.Code
-import com.example.codemanager.data.model.TherapeuticGroup
+import com.example.codemanager.data.model.Category // <-- Importación Actualizada
 import com.example.codemanager.data.model.Warehouse
 import com.example.codemanager.data.repository.CodeRepository
 import com.example.codemanager.ui.auth.AuthViewModel
@@ -34,14 +34,14 @@ fun CodesScreen(
     val selectedType by viewModel.selectedType.collectAsState()
     val message by viewModel.message.collectAsState()
 
-    val groups by viewModel.groups.collectAsState()
-    // OJO: Ahora observamos la lista FILTRADA, no todas las warehouses
+    // --- CAMBIO: Ahora observamos categorías filtradas ---
+    val categories by viewModel.filteredCategoriesForSelection.collectAsState()
     val warehouses by viewModel.filteredWarehousesForSelection.collectAsState()
 
-    // Nuevo estado para el filtro
     val warehouseTypeFilter by viewModel.warehouseTypeFilter.collectAsState()
 
-    val selectedGroup by viewModel.selectedGroup.collectAsState()
+    // --- CAMBIO: selectedCategory en lugar de selectedGroup ---
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
     val selectedWarehouse by viewModel.selectedWarehouse.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
 
@@ -58,13 +58,13 @@ fun CodesScreen(
     if (showGenerateDialog) {
         GenerateCodeDialog(
             codeType = selectedType,
-            groups = groups,
-            warehouses = warehouses, // Pasamos la lista ya filtrada
-            selectedGroup = selectedGroup,
+            categories = categories, // Pasamos categorías
+            warehouses = warehouses,
+            selectedCategory = selectedCategory, // Pasamos selección
             selectedWarehouse = selectedWarehouse,
-            warehouseTypeFilter = warehouseTypeFilter, // Pasamos el filtro actual
-            onWarehouseTypeFilterChange = viewModel::setWarehouseTypeFilter, // Acción para cambiar filtro
-            onGroupSelected = viewModel::setSelectedGroup,
+            warehouseTypeFilter = warehouseTypeFilter,
+            onWarehouseTypeFilterChange = viewModel::setWarehouseTypeFilter,
+            onCategorySelected = viewModel::setSelectedCategory, // Acción actualizada
             onWarehouseSelected = viewModel::setSelectedWarehouse,
             onConfirm = { description ->
                 val userName = currentUser?.name ?: "Usuario Desconocido"
@@ -75,7 +75,6 @@ fun CodesScreen(
         )
     }
 
-    // ... (El Scaffold y el resto de la UI principal se mantienen IGUAL que antes) ...
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
@@ -85,10 +84,18 @@ fun CodesScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            Text("Gestión de Códigos", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = "Gestión de Códigos",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text("Seleccionar Categoría:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                text = "Seleccionar Categoría:",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +130,11 @@ fun CodesScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             if (uiState.filteredCodes.isNotEmpty()) {
-                Text("${selectedType.label} (${uiState.filteredCodes.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "${selectedType.label} (${uiState.filteredCodes.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(uiState.filteredCodes, key = { it.id }) { code ->
@@ -141,7 +152,6 @@ fun CodesScreen(
     }
 }
 
-// ... (TypeFilterChip sigue igual) ...
 @Composable
 fun TypeFilterChip(type: CodeType, selectedType: CodeType, onSelect: (CodeType) -> Unit) {
     FilterChip(
@@ -152,18 +162,17 @@ fun TypeFilterChip(type: CodeType, selectedType: CodeType, onSelect: (CodeType) 
     )
 }
 
-// --- ACTUALIZADO: GENERATE CODE DIALOG CON FILTRO ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenerateCodeDialog(
     codeType: CodeType,
-    groups: List<TherapeuticGroup>,
+    categories: List<Category>, // <-- Lista de Categorías
     warehouses: List<Warehouse>,
-    selectedGroup: TherapeuticGroup?,
+    selectedCategory: Category?, // <-- Selección de Categoría
     selectedWarehouse: Warehouse?,
-    warehouseTypeFilter: String, // Nuevo parámetro
-    onWarehouseTypeFilterChange: (String) -> Unit, // Nuevo parámetro
-    onGroupSelected: (TherapeuticGroup) -> Unit,
+    warehouseTypeFilter: String,
+    onWarehouseTypeFilterChange: (String) -> Unit,
+    onCategorySelected: (Category) -> Unit, // <-- Callback
     onWarehouseSelected: (Warehouse) -> Unit,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
@@ -189,18 +198,19 @@ fun GenerateCodeDialog(
                     Text("Configuración:", style = MaterialTheme.typography.labelLarge)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 1. Grupo Terapéutico
+                    // 1. Categoría (Medicamento o Descartable)
+                    val catLabel = if (codeType == CodeType.MEDICINES) "Categoría (Medicamentos)" else "Categoría (Descartables)"
                     ExposedDropdownItem(
-                        label = "Grupo Terapéutico (00)",
-                        options = groups,
-                        selectedOption = selectedGroup,
-                        onOptionSelected = onGroupSelected,
+                        label = catLabel,
+                        options = categories,
+                        selectedOption = selectedCategory,
+                        onOptionSelected = onCategorySelected,
                         optionText = { "${it.code} - ${it.name}" }
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // --- NUEVO: SELECTOR DE TIPO DE ALMACÉN ---
+                    // Selector Tipo Almacén
                     Text("Tipo de Almacén:", style = MaterialTheme.typography.labelMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -219,7 +229,7 @@ fun GenerateCodeDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 2. Dropdown Almacén (Ahora muestra solo los filtrados)
+                    // 2. Almacén
                     ExposedDropdownItem(
                         label = "Seleccionar ${if(warehouseTypeFilter == "estante") "Estante" else "Refrigerador"}",
                         options = warehouses,
@@ -228,7 +238,6 @@ fun GenerateCodeDialog(
                         optionText = { "${it.code} - ${it.name}" }
                     )
 
-                    // Mensaje de ayuda si no hay items
                     if (warehouses.isEmpty()) {
                         Text(
                             text = "No hay ${if(warehouseTypeFilter == "estante") "estantes" else "refrigeradores"} registrados.",
@@ -256,7 +265,7 @@ fun GenerateCodeDialog(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     val isValid = if (codeType.isComposite) {
-                        selectedGroup != null && selectedWarehouse != null
+                        selectedCategory != null && selectedWarehouse != null
                     } else true
 
                     Button(onClick = { onConfirm(descriptionText) }, enabled = isValid) {
@@ -268,7 +277,6 @@ fun GenerateCodeDialog(
     }
 }
 
-// ... (ExposedDropdownItem y CodeItem siguen igual) ...
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T> ExposedDropdownItem(
