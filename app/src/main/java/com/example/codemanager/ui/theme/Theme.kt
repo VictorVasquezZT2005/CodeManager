@@ -54,28 +54,25 @@ fun CodeManagerTheme(
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (darkTheme) dynamicDarkColorScheme(context)
+            else dynamicLightColorScheme(context)
         }
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
 
     val view = LocalView.current
+
     if (!view.isInEditMode) {
         SideEffect {
-
-            val window = (view.context as Activity).window
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
 
             val navBarColor = colorScheme.surface
-            val statusBarColor = colorScheme.background  // 🔥 barra de estado del color del fondo
+            val statusBarColor = colorScheme.background
 
-            // Barra de estado = fondo de la app
             window.statusBarColor = statusBarColor.toArgb()
-
-            // Barra de navegación = igual que NavigationBar de Compose
             window.navigationBarColor = navBarColor.toArgb()
 
-            // Evitar contraste
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 try {
                     window.isNavigationBarContrastEnforced = false
