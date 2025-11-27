@@ -83,6 +83,18 @@ class CodeRepository {
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    // --- NUEVA FUNCIÓN: ACTUALIZAR CÓDIGO (Para editar descripción) ---
+    suspend fun updateCode(code: Code): Result<Boolean> {
+        return try {
+            // Sobrescribe el documento con el objeto Code actualizado (mismo ID)
+            codesCollection.document(code.id).set(code).await()
+            loadCodes() // Recargamos la lista localmente
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // --- CÓDIGO SIMPLE (62 / 70) ---
     suspend fun generateStandardCode(prefix: String, description: String, createdBy: String): Result<Code> {
         return try {
@@ -133,7 +145,7 @@ class CodeRepository {
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    // --- IMPORTAR CÓDIGO (ESTA ES LA FUNCIÓN QUE FALTABA) ---
+    // --- IMPORTAR CÓDIGO ---
     suspend fun importCode(code: Code): Result<Boolean> {
         return try {
             // Guardamos o sobrescribimos el código
@@ -141,6 +153,24 @@ class CodeRepository {
             Result.success(true)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    // --- ACTUALIZAR SECUENCIA (CORRECCIÓN DE IMPORTACIÓN) ---
+    suspend fun updateSequenceMax(sequenceKey: String, newMaxSequence: Int) {
+        val docRef = sequencesCollection.document(sequenceKey)
+        try {
+            db.runTransaction { transaction ->
+                val snapshot = transaction.get(docRef)
+                val currentSequence = snapshot.getLong("lastSequence")?.toInt() ?: 0
+
+                // Solo actualizamos si la nueva secuencia es MAYOR a la actual
+                if (newMaxSequence > currentSequence) {
+                    transaction.set(docRef, mapOf("lastSequence" to newMaxSequence))
+                }
+            }.await()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

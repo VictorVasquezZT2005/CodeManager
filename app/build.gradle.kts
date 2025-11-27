@@ -15,7 +15,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 1
-        versionName = "1.3" // <--- Esta es la versión que leerá el Dashboard
+        versionName = "1.4" // <--- Esta es la versión que leerá el Dashboard
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

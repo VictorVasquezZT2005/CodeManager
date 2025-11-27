@@ -77,20 +77,13 @@ class MainActivity : ComponentActivity() {
 
         val firstRunManager = FirstRunManager(this)
 
-        // --- SOLUCIÓN: VERIFICAR SESIÓN ACTIVA AL INICIAR ---
-        // Preguntamos a Firebase si hay un usuario guardado en caché
         if (authRepository.isUserLoggedIn()) {
-            // Si existe, forzamos el estado de autenticación a TRUE
             authViewModel.setAuthenticated(true)
         }
-        // ----------------------------------------------------
 
         setContent {
             CodeManagerTheme {
-                // Estado para controlar si es la primera vez (Leemos de prefs)
                 var isFirstRun by remember { mutableStateOf(firstRunManager.isFirstRun()) }
-
-                // Observamos el estado de autenticación
                 val uiState by authViewModel.uiState.collectAsState()
 
                 Surface(
@@ -98,9 +91,6 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     when {
-                        // CASO 1: Es la primera vez que abre la app (Permisos)
-                        // Nota: Si ya está logueado pero reinstaló la app, podría pedir permisos de nuevo,
-                        // lo cual es correcto.
                         isFirstRun -> {
                             PermissionsScreen(
                                 onPermissionResult = {
@@ -109,13 +99,9 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-
-                        // CASO 2: No es primera vez y NO está autenticado -> Login
                         !uiState.isAuthenticated -> {
                             LoginScreen(viewModel = authViewModel)
                         }
-
-                        // CASO 3: Autenticado -> Mostrar la App Principal
                         else -> {
                             MainAppContent(
                                 authViewModel = authViewModel,
@@ -146,7 +132,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// Esta función contiene SOLO la navegación interna cuando ya estás logueado
 @Composable
 fun MainAppContent(
     authViewModel: AuthViewModel,
@@ -157,9 +142,18 @@ fun MainAppContent(
 ) {
     val navController = rememberNavController()
 
+    // --- CAMBIO: Observamos el estado aquí para obtener el rol ---
+    val uiState by authViewModel.uiState.collectAsState()
+    val userRole = uiState.userRole ?: "Usuario" // Default "Usuario" por seguridad
+    // -------------------------------------------------------------
+
     Scaffold(
         bottomBar = {
-            NavBar(navController = navController)
+            // Pasamos el rol al NavBar
+            NavBar(
+                navController = navController,
+                userRole = userRole
+            )
         }
     ) { paddingValues ->
         NavHost(

@@ -9,9 +9,22 @@ import java.lang.Exception
 
 class AuthRepository {
 
-    // CORRECCIÓN: Usamos getInstance() en lugar de Firebase.auth para evitar el error de KTX
+    // Instancias
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+
+    // --- LECTURA DE ROL (NUEVO) ---
+    // Esta función es vital para que el MainActivity sepa si es Admin o Usuario rápidamente
+    suspend fun getUserRole(): String {
+        return try {
+            val userId = auth.currentUser?.uid ?: return "Usuario"
+            val document = db.collection("users").document(userId).get().await()
+            // Retorna el campo "rol" o "Usuario" si no existe
+            document.getString("rol") ?: "Usuario"
+        } catch (e: Exception) {
+            "Usuario"
+        }
+    }
 
     // Iniciar sesión
     suspend fun signIn(email: String, password: String): Result<Unit> {
@@ -23,7 +36,7 @@ class AuthRepository {
         }
     }
 
-    // Obtener usuario actual
+    // Obtener usuario actual (Objeto completo)
     suspend fun getCurrentUser(): User? {
         return auth.currentUser?.let { firebaseUser ->
             try {
@@ -31,7 +44,7 @@ class AuthRepository {
                 if (document.exists()) {
                     document.toObject(User::class.java)
                 } else {
-                    // Crear usuario por defecto si no existe en Firestore
+                    // Crear usuario por defecto si no existe
                     val newUser = User(
                         id = firebaseUser.uid,
                         email = firebaseUser.email ?: "",
@@ -66,27 +79,20 @@ class AuthRepository {
         }
     }
 
-    // --- MODIFICADO: Crear usuario sin cerrar sesión del Admin ---
+    // Crear usuario secundario (sin cerrar sesión del Admin)
     suspend fun createUser(email: String, password: String, name: String, rol: String): Result<User> {
         return try {
-            // 1. Obtenemos la configuración de la App actual usando getInstance()
             val mainApp = FirebaseApp.getInstance()
             val options = mainApp.options
-
-            // 2. Definimos un nombre para la app secundaria
             val secondaryAppName = "SecondaryAuthApp"
 
-            // 3. Inicializamos (o recuperamos) la App Secundaria
             val secondaryApp = try {
                 FirebaseApp.getInstance(secondaryAppName)
             } catch (e: IllegalStateException) {
                 FirebaseApp.initializeApp(mainApp.applicationContext, options, secondaryAppName)
             }
 
-            // 4. Obtenemos la instancia de Auth específica de esa App Secundaria
             val secondaryAuth = FirebaseAuth.getInstance(secondaryApp)
-
-            // 5. Creamos el usuario en la instancia secundaria
             val authResult = secondaryAuth.createUserWithEmailAndPassword(email, password).await()
             val userId = authResult.user?.uid ?: throw Exception("Error al crear usuario en Auth")
 
@@ -97,10 +103,7 @@ class AuthRepository {
                 rol = rol
             )
 
-            // 6. Guardamos en Firestore usando 'db' (la instancia PRINCIPAL del Admin)
             db.collection("users").document(userId).set(newUser).await()
-
-            // 7. Cerramos sesión en la instancia secundaria para limpiar
             secondaryAuth.signOut()
 
             Result.success(newUser)
@@ -112,10 +115,7 @@ class AuthRepository {
 
     suspend fun updateUser(userId: String, name: String, rol: String): Result<Unit> {
         return try {
-            val updates = mapOf(
-                "name" to name,
-                "rol" to rol
-            )
+            val updates = mapOf("name" to name, "rol" to rol)
             db.collection("users").document(userId).update(updates).await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -126,14 +126,10 @@ class AuthRepository {
     suspend fun deleteUser(userId: String): Result<Unit> {
         return try {
             val currentUserId = auth.currentUser?.uid
-
-            // Verificación de seguridad: No permitir borrarse a uno mismo
             if (currentUserId == userId) {
-                return Result.failure(Exception("No puedes eliminar tu propia cuenta mientras estás logueado."))
+                return Result.failure(Exception("No puedes eliminar tu propia cuenta."))
             }
-
             db.collection("users").document(userId).delete().await()
-
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

@@ -39,14 +39,20 @@ fun CodesScreen(
 
     val context = LocalContext.current
     val categories by viewModel.filteredCategoriesForSelection.collectAsState()
+
+    // Esta lista YA viene filtrada por el ViewModel según si eliges "estante" o "refrigerador"
     val warehouses by viewModel.filteredWarehousesForSelection.collectAsState()
+
     val warehouseTypeFilter by viewModel.warehouseTypeFilter.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
-    val selectedWarehouse by viewModel.selectedWarehouse.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
 
     var showGenerateDialog by remember { mutableStateOf(false) }
+    var codeToEdit by remember { mutableStateOf<Code?>(null) }
+
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val isAdmin = currentUser?.rol == "Administrador"
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -63,23 +69,41 @@ fun CodesScreen(
         }
     }
 
+    // --- DIÁLOGO GENERAR ---
     if (showGenerateDialog) {
         GenerateCodeDialog(
             codeType = selectedType,
             categories = categories,
-            warehouses = warehouses,
+            warehouses = warehouses, // Pasamos la lista real para validar
             selectedCategory = selectedCategory,
-            selectedWarehouse = selectedWarehouse,
             warehouseTypeFilter = warehouseTypeFilter,
             onWarehouseTypeFilterChange = viewModel::setWarehouseTypeFilter,
             onCategorySelected = viewModel::setSelectedCategory,
-            onWarehouseSelected = viewModel::setSelectedWarehouse,
-            onConfirm = { description ->
+            onConfirm = { description, warehouseCode ->
                 val userName = currentUser?.name ?: "Usuario Desconocido"
-                viewModel.generateCode(description.ifBlank { "Sin descripción" }, userName)
+                // Enviamos el código validado
+                viewModel.generateCode(
+                    description = description,
+                    createdBy = userName,
+                    category = selectedCategory,
+                    warehouseCodeInput = warehouseCode
+                )
                 showGenerateDialog = false
             },
             onDismiss = { showGenerateDialog = false }
+        )
+    }
+
+    // --- DIÁLOGO EDITAR ---
+    if (codeToEdit != null) {
+        EditCodeDialog(
+            code = codeToEdit!!,
+            onDismiss = { codeToEdit = null },
+            onConfirm = { newDescription ->
+                val updatedCode = codeToEdit!!.copy(description = newDescription)
+                viewModel.updateCode(updatedCode)
+                codeToEdit = null
+            }
         )
     }
 
@@ -92,7 +116,7 @@ fun CodesScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // --- HEADER CON ICONOS PERSONALIZADOS ---
+            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -105,38 +129,21 @@ fun CodesScreen(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Exportar
-                IconButton(onClick = {
-                    val fileName = "Codigos_${selectedType.prefix}.csv"
-                    exportLauncher.launch(fileName)
-                }) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.file_export_solid_full),
-                        contentDescription = "Exportar",
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // Importar
-                IconButton(onClick = {
-                    importLauncher.launch(arrayOf("text/*", "text/csv"))
-                }) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.file_import_solid_full),
-                        contentDescription = "Importar",
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                if (isAdmin) {
+                    IconButton(onClick = { exportLauncher.launch("Codigos_${selectedType.prefix}.csv") }) {
+                        Icon(painterResource(id = R.drawable.file_export_solid_full), "Exportar", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                    }
+                    IconButton(onClick = { importLauncher.launch(arrayOf("text/*", "text/csv")) }) {
+                        Icon(painterResource(id = R.drawable.file_import_solid_full), "Importar", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                    }
                 }
             }
-            // ----------------------------------------
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Filtros Superiores
             Text(text = "Seleccionar Categoría:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
-
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TypeFilterChip(CodeType.EMERGENCY, selectedType, viewModel::selectType)
                 TypeFilterChip(CodeType.SERVICES, selectedType, viewModel::selectType)
@@ -149,6 +156,7 @@ fun CodesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Botón Generar
             Button(
                 onClick = { showGenerateDialog = true },
                 modifier = Modifier.fillMaxWidth(),
@@ -168,12 +176,18 @@ fun CodesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Lista de Códigos
             if (uiState.filteredCodes.isNotEmpty()) {
                 Text(text = "${selectedType.label} (${uiState.filteredCodes.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(uiState.filteredCodes, key = { it.id }) { code ->
-                        CodeItem(code = code, onDelete = { viewModel.deleteCode(code.id) })
+                        CodeItem(
+                            code = code,
+                            isAdmin = isAdmin,
+                            onDelete = { viewModel.deleteCode(code.id) },
+                            onEdit = { codeToEdit = code }
+                        )
                     }
                 }
             } else if (!uiState.isLoading) {
@@ -187,34 +201,28 @@ fun CodesScreen(
     }
 }
 
-// ... Mantén el resto de componentes (TypeFilterChip, GenerateCodeDialog, etc.) abajo ...
-// (Son los mismos que en el mensaje anterior, no han cambiado).
-@Composable
-fun TypeFilterChip(type: CodeType, selectedType: CodeType, onSelect: (CodeType) -> Unit) {
-    FilterChip(
-        selected = type == selectedType,
-        onClick = { onSelect(type) },
-        label = { Text(type.label) },
-        modifier = Modifier.wrapContentWidth()
-    )
-}
-
+// --- DIÁLOGO GENERAR CON VALIDACIÓN ESTRICTA DE EXISTENCIA ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenerateCodeDialog(
     codeType: CodeType,
     categories: List<Category>,
-    warehouses: List<Warehouse>,
+    warehouses: List<Warehouse>, // Lista filtrada de DB
     selectedCategory: Category?,
-    selectedWarehouse: Warehouse?,
     warehouseTypeFilter: String,
     onWarehouseTypeFilterChange: (String) -> Unit,
     onCategorySelected: (Category) -> Unit,
-    onWarehouseSelected: (Warehouse) -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var descriptionText by remember { mutableStateOf("") }
+    var warehouseCodeText by remember { mutableStateOf("") }
+
+    // Estados de error visual
+    var isCategoryError by remember { mutableStateOf(false) }
+    var isWarehouseError by remember { mutableStateOf(false) }
+    var warehouseErrorMsg by remember { mutableStateOf("") }
+    var isDescriptionError by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -232,31 +240,50 @@ fun GenerateCodeDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (codeType.isComposite) {
-                    Text("Configuración:", style = MaterialTheme.typography.labelLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // 1. SELECCIÓN DE CATEGORÍA
+                    Text("Paso 1: Categoría", style = MaterialTheme.typography.labelLarge)
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     val catLabel = if (codeType == CodeType.MEDICINES) "Categoría (Medicamentos)" else "Categoría (Descartables)"
-                    ExposedDropdownItem(
-                        label = catLabel,
-                        options = categories,
-                        selectedOption = selectedCategory,
-                        onOptionSelected = onCategorySelected,
-                        optionText = { "${it.code} - ${it.name}" }
-                    )
+
+                    Column {
+                        ExposedDropdownItem(
+                            label = catLabel,
+                            options = categories,
+                            selectedOption = selectedCategory,
+                            onOptionSelected = {
+                                onCategorySelected(it)
+                                isCategoryError = false
+                            },
+                            optionText = { "${it.code} - ${it.name}" },
+                            isError = isCategoryError
+                        )
+                        if (isCategoryError) {
+                            Text("⚠ Debes seleccionar una categoría", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, top = 2.dp))
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Text("Tipo de Almacén:", style = MaterialTheme.typography.labelMedium)
+                    // 2. TIPO DE ALMACÉN (Estante vs Refri)
+                    Text("Paso 2: Almacén", style = MaterialTheme.typography.labelLarge)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = warehouseTypeFilter == "estante",
-                            onClick = { onWarehouseTypeFilterChange("estante") },
+                            onClick = {
+                                // Al cambiar filtro, limpiamos el input para evitar confusión
+                                if (warehouseTypeFilter != "estante") warehouseCodeText = ""
+                                onWarehouseTypeFilterChange("estante")
+                            },
                             label = { Text("Estantes") },
                             leadingIcon = { if (warehouseTypeFilter == "estante") Icon(Icons.Default.Check, null) }
                         )
                         FilterChip(
                             selected = warehouseTypeFilter == "refrigerador",
-                            onClick = { onWarehouseTypeFilterChange("refrigerador") },
+                            onClick = {
+                                if (warehouseTypeFilter != "refrigerador") warehouseCodeText = ""
+                                onWarehouseTypeFilterChange("refrigerador")
+                            },
                             label = { Text("Refrigeradores") },
                             leadingIcon = { if (warehouseTypeFilter == "refrigerador") Icon(Icons.Default.Check, null) }
                         )
@@ -264,32 +291,43 @@ fun GenerateCodeDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    ExposedDropdownItem(
-                        label = "Seleccionar ${if(warehouseTypeFilter == "estante") "Estante" else "Refrigerador"}",
-                        options = warehouses,
-                        selectedOption = selectedWarehouse,
-                        onOptionSelected = onWarehouseSelected,
-                        optionText = { "${it.code} - ${it.name}" }
+                    // 3. INPUT CÓDIGO (Validación contra DB)
+                    OutlinedTextField(
+                        value = warehouseCodeText,
+                        onValueChange = {
+                            warehouseCodeText = it
+                            isWarehouseError = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Código exacto (Ej: 0702)") },
+                        placeholder = { Text(if(warehouseTypeFilter == "estante") "Ej: 0702" else "Ej: R-01") },
+                        singleLine = true,
+                        isError = isWarehouseError,
+                        supportingText = {
+                            if (isWarehouseError) Text(warehouseErrorMsg, color = MaterialTheme.colorScheme.error)
+                        }
                     )
-
-                    if (warehouses.isEmpty()) {
-                        Text(
-                            text = "No hay ${if(warehouseTypeFilter == "estante") "estantes" else "refrigeradores"} registrados.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 4. DESCRIPCIÓN
                 OutlinedTextField(
                     value = descriptionText,
-                    onValueChange = { descriptionText = it },
+                    onValueChange = {
+                        descriptionText = it
+                        isDescriptionError = false
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Descripción / Detalle") },
                     placeholder = { Text("Ej: Compra urgente...") },
-                    maxLines = 3
+                    maxLines = 3,
+                    isError = isDescriptionError,
+                    supportingText = {
+                        if (isDescriptionError) {
+                            Text("⚠ La descripción es obligatoria", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -298,13 +336,138 @@ fun GenerateCodeDialog(
                     TextButton(onClick = onDismiss) { Text("Cancelar") }
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    val isValid = if (codeType.isComposite) {
-                        selectedCategory != null && selectedWarehouse != null
-                    } else true
+                    Button(
+                        onClick = {
+                            var valid = true
 
-                    Button(onClick = { onConfirm(descriptionText) }, enabled = isValid) {
+                            // Validar Descripción
+                            if (descriptionText.isBlank()) {
+                                isDescriptionError = true
+                                valid = false
+                            }
+
+                            // Validaciones específicas para compuestos (Med/Desc)
+                            if (codeType.isComposite) {
+                                if (selectedCategory == null) {
+                                    isCategoryError = true
+                                    valid = false
+                                }
+
+                                val inputCode = warehouseCodeText.trim() // NO hacemos uppercase forzado, respetamos lo que escribe para comparar
+
+                                if (inputCode.isBlank()) {
+                                    isWarehouseError = true
+                                    warehouseErrorMsg = "⚠ Campo requerido"
+                                    valid = false
+                                } else {
+                                    // --- VALIDACIÓN CRÍTICA ---
+                                    // Buscamos ignorando mayúsculas/minúsculas para ser amigables,
+                                    // pero verificamos que el código exista en la lista `warehouses` cargada de Firebase.
+                                    // Como `warehouses` ya viene filtrada por tipo, si buscas un código de refri estando en estante, dará false.
+                                    val exists = warehouses.any { it.code.equals(inputCode, ignoreCase = true) }
+
+                                    if (!exists) {
+                                        isWarehouseError = true
+                                        warehouseErrorMsg = "⚠ Código no encontrado en BD ($warehouseTypeFilter)"
+                                        valid = false
+                                    }
+                                }
+                            }
+
+                            if (valid) {
+                                onConfirm(descriptionText, warehouseCodeText.trim())
+                            }
+                        }
+                    ) {
                         Text("Generar")
                     }
+                }
+            }
+        }
+    }
+}
+
+// ... (EditCodeDialog, CodeItem, ExposedDropdownItem y TypeFilterChip siguen igual)
+
+@Composable
+fun EditCodeDialog(
+    code: Code,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var descriptionText by remember { mutableStateOf(code.description) }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar Código") },
+        text = {
+            Column {
+                Text("Código: ${code.code}", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = descriptionText,
+                    onValueChange = {
+                        descriptionText = it
+                        isError = false
+                    },
+                    label = { Text("Descripción") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = isError,
+                    supportingText = { if(isError) Text("La descripción no puede estar vacía", color = MaterialTheme.colorScheme.error) }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (descriptionText.isBlank()) {
+                    isError = true
+                } else {
+                    onConfirm(descriptionText)
+                }
+            }) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun CodeItem(
+    code: Code,
+    isAdmin: Boolean,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = code.code, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    if (code.description.isNotBlank()) Text(text = code.description, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (isAdmin) {
+                    Row {
+                        IconButton(onClick = onEdit) {
+                            Icon(Icons.Default.Edit, contentDescription = "Editar", tint = MaterialTheme.colorScheme.secondary)
+                        }
+                        IconButton(onClick = onDelete) {
+                            Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Por: ${code.createdBy}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (code.createdAt > 0) {
+                    val dateFormat = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
+                    Text(text = dateFormat.format(Date(code.createdAt)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -318,7 +481,8 @@ fun <T> ExposedDropdownItem(
     options: List<T>,
     selectedOption: T?,
     onOptionSelected: (T) -> Unit,
-    optionText: (T) -> String
+    optionText: (T) -> String,
+    isError: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -333,7 +497,8 @@ fun <T> ExposedDropdownItem(
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            isError = isError
         )
         ExposedDropdownMenu(
             expanded = expanded,
@@ -350,24 +515,11 @@ fun <T> ExposedDropdownItem(
 }
 
 @Composable
-fun CodeItem(code: Code, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = code.code, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    if (code.description.isNotBlank()) Text(text = code.description, style = MaterialTheme.typography.bodyMedium)
-                }
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error) }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(text = "Por: ${code.createdBy}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (code.createdAt > 0) {
-                    val dateFormat = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
-                    Text(text = dateFormat.format(Date(code.createdAt)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-    }
+fun TypeFilterChip(type: CodeType, selectedType: CodeType, onSelect: (CodeType) -> Unit) {
+    FilterChip(
+        selected = type == selectedType,
+        onClick = { onSelect(type) },
+        label = { Text(type.label) },
+        modifier = Modifier.wrapContentWidth()
+    )
 }

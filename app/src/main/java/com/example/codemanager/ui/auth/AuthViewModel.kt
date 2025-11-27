@@ -21,22 +21,19 @@ class AuthViewModel(
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
     init {
-        loadCurrentUser()
+        // Al iniciar el ViewModel, intentamos cargar el usuario si ya existe sesión
+        if (authRepository.isUserLoggedIn()) {
+            loadCurrentUser()
+        }
     }
 
     // --- Login Fields ---
     fun onEmailChange(email: String) {
-        _uiState.value = _uiState.value.copy(
-            email = email,
-            emailError = null
-        )
+        _uiState.value = _uiState.value.copy(email = email, emailError = null)
     }
 
     fun onPasswordChange(password: String) {
-        _uiState.value = _uiState.value.copy(
-            password = password,
-            passwordError = null
-        )
+        _uiState.value = _uiState.value.copy(password = password, passwordError = null)
     }
 
     // --- Reset Password Fields ---
@@ -45,7 +42,6 @@ class AuthViewModel(
     }
 
     fun showResetDialog() {
-        // Pre-llenamos el correo de recuperación si el usuario ya lo escribió en el login
         _uiState.value = _uiState.value.copy(
             showResetDialog = true,
             resetEmail = _uiState.value.email,
@@ -63,7 +59,6 @@ class AuthViewModel(
     fun login() {
         val currentState = _uiState.value
 
-        // Validaciones
         val emailError = if (currentState.email.isBlank()) "El email es requerido"
         else if (!isValidEmail(currentState.email)) "Email no válido"
         else null
@@ -81,16 +76,13 @@ class AuthViewModel(
             return
         }
 
-        _uiState.value = currentState.copy(
-            isLoading = true,
-            error = null
-        )
+        _uiState.value = currentState.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
             try {
                 val result = authRepository.signIn(currentState.email, currentState.password)
                 if (result.isSuccess) {
-                    loadCurrentUser()
+                    loadCurrentUser() // <--- Esto carga el rol automáticamente
                     _uiState.value = _uiState.value.copy(
                         isAuthenticated = true,
                         isLoading = false,
@@ -137,20 +129,28 @@ class AuthViewModel(
         }
     }
 
+    // --- CARGAR USUARIO Y ROL ---
     private fun loadCurrentUser() {
         viewModelScope.launch {
-            _currentUser.value = authRepository.getCurrentUser()
+            // Obtenemos el objeto usuario completo
+            val user = authRepository.getCurrentUser()
+            _currentUser.value = user
+
+            // ACTUALIZAMOS EL UI STATE CON EL ROL
+            _uiState.value = _uiState.value.copy(
+                userRole = user?.rol // <--- AQUÍ SE ASIGNA EL ROL
+            )
         }
     }
 
+    // Llamado desde MainActivity
     fun setAuthenticated(authenticated: Boolean) {
-        _uiState.value = _uiState.value.copy(
-            isAuthenticated = authenticated
-        )
+        _uiState.value = _uiState.value.copy(isAuthenticated = authenticated)
         if (authenticated) {
-            loadCurrentUser()
+            loadCurrentUser() // Si forzamos auth, cargamos datos (y rol)
         } else {
             _currentUser.value = null
+            _uiState.value = _uiState.value.copy(userRole = null)
         }
     }
 
@@ -169,12 +169,13 @@ class AuthViewModel(
     }
 }
 
-// --- STATE ---
+// --- STATE ACTUALIZADO (Con userRole) ---
 data class LoginUiState(
     val email: String = "",
     val password: String = "",
     val isLoading: Boolean = false,
     val isAuthenticated: Boolean = false,
+    val userRole: String? = null, // <--- ESTE CAMPO ES EL QUE FALTABA
     val emailError: String? = null,
     val passwordError: String? = null,
     val error: String? = null,
@@ -187,7 +188,6 @@ data class LoginUiState(
     val resetError: String? = null
 )
 
-// --- FACTORY (Incluida aquí como pediste) ---
 class AuthViewModelFactory(
     private val authRepository: AuthRepository
 ) : ViewModelProvider.Factory {

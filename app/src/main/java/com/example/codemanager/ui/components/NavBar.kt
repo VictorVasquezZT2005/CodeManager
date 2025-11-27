@@ -24,6 +24,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 @Composable
 fun NavBar(
     navController: NavHostController,
+    userRole: String, // <--- 1. NUEVO PARÁMETRO: Recibimos el rol
     modifier: Modifier = Modifier
 ) {
     val navBarColor = MaterialTheme.colorScheme.surface
@@ -31,19 +32,28 @@ fun NavBar(
     NavigationBar(
         modifier = modifier,
         containerColor = navBarColor,
-        tonalElevation = 0.dp   // <- SUPER IMPORTANTE
+        tonalElevation = 0.dp
     ) {
         val navBackStackEntry = navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry.value?.destination
 
-        val items = listOf(
+        // Definimos la lista completa de opciones
+        val allItems = listOf(
             NavItem("dashboard", "Dashboard", Icons.Default.Home),
             NavItem("codes", "Códigos", Icons.Default.Code),
-            // --- CAMBIO: Grupos -> Categorías ---
             NavItem("groups", "Categorías", Icons.Default.Category),
             NavItem("warehouses", "Almacenes", Icons.Default.Storage),
             NavItem("users", "Usuarios", Icons.Default.Person)
         )
+
+        // --- 2. LÓGICA DE FILTRADO ---
+        // Si el rol es "Usuario", mostramos SOLO Dashboard y Códigos.
+        // Para "Admin" (o cualquier otro), mostramos todo.
+        val items = if (userRole == "Usuario") {
+            allItems.filter { it.route == "dashboard" || it.route == "codes" }
+        } else {
+            allItems
+        }
 
         items.forEach { item ->
             NavBarItem(
