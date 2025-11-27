@@ -1,9 +1,15 @@
 package com.example.codemanager.ui.dashboard
 
+import android.Manifest
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,10 +24,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.codemanager.data.repository.AuthRepository
@@ -58,7 +69,7 @@ fun DashboardScreen(
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
     ) {
-        // --- HEADER (Igual que antes) ---
+        // --- HEADER ---
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -112,13 +123,12 @@ fun DashboardScreen(
             }
         }
 
-        // --- CONTENIDO PRINCIPAL ---
+        // --- CONTENIDO ---
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
         ) {
-            // Tarjeta Datos Cuenta
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -164,7 +174,7 @@ fun DashboardScreen(
 }
 
 // -----------------------------------------------------
-// COMPONENTE ACTUALIZADO CON LÓGICA DE INSTALACIÓN
+// COMPONENTE ACTUALIZADO (NOTIFICACIONES FORZADAS)
 // -----------------------------------------------------
 @Composable
 fun UpdateCard(
@@ -174,6 +184,29 @@ fun UpdateCard(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // 1. GESTIÓN DE PERMISOS (Android 13+)
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            } else true
+        )
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted -> hasNotificationPermission = isGranted }
+    )
+
+    // Pedir permiso al iniciar si no lo tiene
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!hasNotificationPermission) {
+                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     // Datos de versión
     val currentVersion = remember(context) {
         try {
@@ -182,19 +215,47 @@ fun UpdateCard(
         } catch (e: Exception) { "1.0" }
     }
 
-    // Estados de la UI
+    // Estados UI
     var latestVersion by remember { mutableStateOf<String?>(null) }
     var downloadUrl by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
     var updateAvailable by remember { mutableStateOf(false) }
 
-    // Estados de Descarga
+    // Control para no spamear notificaciones (solo 1 vez por sesión)
+    var notificationSent by remember { mutableStateOf(false) }
+
+    // Estados Descarga
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
     var downloadedFile by remember { mutableStateOf<File?>(null) }
     var downloadError by remember { mutableStateOf<String?>(null) }
 
-    // Consultar GitHub al iniciar
+    // Función para enviar la notificación
+    fun sendNotification(version: String) {
+        // Intenta enviar incluso si el permiso parece falso, por si acaso
+        try {
+            // Icono: Usamos uno del sistema para asegurar que no falle por falta de recursos
+            val builder = NotificationCompat.Builder(context, "updates_channel")
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle("Actualización Disponible")
+                .setContentText("Nueva versión $version lista para descargar.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+
+            with(NotificationManagerCompat.from(context)) {
+                // Verificación final de permisos antes de notificar
+                if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                    notify(999, builder.build())
+                }
+                // Feedback visual (Toast) para confirmar que la lógica se ejecutó
+                Toast.makeText(context, "Nueva versión detectada: $version", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Consultar GitHub
     LaunchedEffect(Unit) {
         checking = true
         try {
@@ -208,16 +269,19 @@ fun UpdateCard(
 
                 val apkUrl = if (assets.length() > 0) {
                     assets.getJSONObject(0).getString("browser_download_url")
-                } else {
-                    ""
-                }
+                } else { "" }
 
                 latestVersion = tagName
                 downloadUrl = apkUrl
             }
 
+            // Lógica de Notificación
             if (latestVersion != null && latestVersion != currentVersion && !downloadUrl.isNullOrEmpty()) {
                 updateAvailable = true
+                if (!notificationSent) {
+                    sendNotification(latestVersion!!)
+                    notificationSent = true
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -226,16 +290,10 @@ fun UpdateCard(
         }
     }
 
-    // Función para Instalar APK
+    // Función Instalar APK
     fun installApk(file: File) {
         try {
-            // Generar URI seguro con FileProvider
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider", // Debe coincidir con AndroidManifest
-                file
-            )
-
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -243,11 +301,11 @@ fun UpdateCard(
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            downloadError = "Error al abrir instalador: ${e.message}"
+            downloadError = "Error al instalar: ${e.message}"
         }
     }
 
-    // Función para Descargar APK
+    // Función Descargar
     fun startDownload() {
         if (downloadUrl == null) return
         isDownloading = true
@@ -259,42 +317,32 @@ fun UpdateCard(
                 val url = URL(downloadUrl)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.connect()
-
                 val fileLength = connection.contentLength
                 val input = connection.inputStream
-
-                // Guardar en carpeta externa para que el instalador tenga acceso
                 val storageDir = context.getExternalFilesDir(null)
                 val outputFile = File(storageDir, "update.apk")
                 val output = FileOutputStream(outputFile)
-
                 val data = ByteArray(4096)
                 var total: Long = 0
                 var count: Int
 
                 while (input.read(data).also { count = it } != -1) {
                     total += count.toLong()
-                    if (fileLength > 0) {
-                        // Actualizar progreso
-                        downloadProgress = (total.toFloat() / fileLength.toFloat())
-                    }
+                    if (fileLength > 0) downloadProgress = (total.toFloat() / fileLength.toFloat())
                     output.write(data, 0, count)
                 }
-
-                output.flush()
-                output.close()
-                input.close()
+                output.flush(); output.close(); input.close()
 
                 withContext(Dispatchers.Main) {
                     isDownloading = false
                     downloadedFile = outputFile
-                    // Auto-trigger install prompt? Opcional. Aquí dejamos que el usuario pulse el botón.
+                    // Auto-instalar al terminar la descarga (Opcional)
+                    installApk(outputFile)
                 }
-
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     isDownloading = false
-                    downloadError = "Error en descarga: ${e.message}"
+                    downloadError = "Error descarga: ${e.message}"
                 }
             }
         }
@@ -307,87 +355,47 @@ fun UpdateCard(
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(imageVector = Icons.Default.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(16.dp))
-                Text(text = "Versión del Sistema", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text("Versión del Sistema", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Versión Instalada:", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(currentVersion, fontWeight = FontWeight.Bold)
             }
-
             if (latestVersion != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Última disponible:", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        text = "v$latestVersion",
-                        fontWeight = FontWeight.Bold,
-                        color = if (updateAvailable) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
+                    Text("v$latestVersion", fontWeight = FontWeight.Bold, color = if (updateAvailable) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
             }
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // --- ESTADOS DE LA UI DEL BOTÓN ---
 
             if (checking) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Buscando actualizaciones...", style = MaterialTheme.typography.bodySmall)
+                    Text("Verificando...", style = MaterialTheme.typography.bodySmall)
                 }
             } else if (downloadedFile != null) {
-                // ESTADO: DESCARGA COMPLETADA -> BOTÓN DE INSTALAR
-                Button(
-                    onClick = { installApk(downloadedFile!!) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                ) {
-                    Icon(Icons.Default.Android, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Instalar Actualización Ahora")
+                Button(onClick = { installApk(downloadedFile!!) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) {
+                    Icon(Icons.Default.Android, null); Spacer(modifier = Modifier.width(8.dp)); Text("Instalar Ahora")
                 }
             } else if (isDownloading) {
-                // ESTADO: DESCARGANDO -> BARRA DE PROGRESO
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    LinearProgressIndicator(
-                        progress = { downloadProgress },
-                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Descargando... ${(downloadProgress * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.align(Alignment.End),
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    LinearProgressIndicator(progress = { downloadProgress }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape))
+                    Text("${(downloadProgress * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.End))
                 }
             } else if (updateAvailable) {
-                // ESTADO: ACTUALIZACIÓN DISPONIBLE -> BOTÓN DE DESCARGAR
-                Button(
-                    onClick = { startDownload() },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Descargar Actualización")
+                Button(onClick = { startDownload() }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.CloudDownload, null); Spacer(modifier = Modifier.width(8.dp)); Text("Descargar Actualización")
                 }
             } else {
-                OutlinedButton(onClick = { }, modifier = Modifier.fillMaxWidth(), enabled = false) {
-                    Text("Sistema Actualizado")
-                }
+                OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth(), enabled = false) { Text("Sistema Actualizado") }
             }
-
-            if (downloadError != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = downloadError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
+            if (downloadError != null) Text(downloadError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
