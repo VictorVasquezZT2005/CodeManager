@@ -3,7 +3,7 @@ package com.example.codemanager.ui.warehouses
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.codemanager.data.model.Warehouse // <-- Importación necesaria
+import com.example.codemanager.data.model.Warehouse
 import com.example.codemanager.data.repository.WarehouseRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,13 +43,10 @@ class WarehousesViewModel(
 
             repository.getAllWarehouses().fold(
                 onSuccess = { warehouses ->
-                    // Actualizar el estado con todos los almacenes
                     _uiState.value = _uiState.value.copy(
                         warehouses = warehouses,
                         isLoading = false
                     )
-
-                    // Aplicar filtros y calcular ubicación
                     applyFiltersAndUpdateState(warehouses)
                     calculateNextAvailableLocation()
                 },
@@ -63,6 +60,8 @@ class WarehousesViewModel(
         }
     }
 
+    // Esta función recibe el objeto ya listo, pero por seguridad,
+    // la conversión principal se hace en generateNewWarehouse
     fun createWarehouse(warehouse: Warehouse) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
@@ -70,7 +69,7 @@ class WarehousesViewModel(
             repository.createWarehouse(warehouse).fold(
                 onSuccess = {
                     _message.value = "${Warehouse.getTypeDisplayName(warehouse.type)} creado exitosamente"
-                    loadWarehouses() // Recargar para actualizar lista y siguiente ubicación
+                    loadWarehouses()
                 },
                 onFailure = { exception ->
                     _uiState.value = _uiState.value.copy(
@@ -82,11 +81,16 @@ class WarehousesViewModel(
         }
     }
 
+    // --- CAMBIO 1: ACTUALIZAR (Nombre a Mayúsculas) ---
     fun updateWarehouse(warehouseId: String, warehouse: Warehouse) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            repository.updateWarehouse(warehouseId, warehouse).fold(
+            // Aseguramos mayúsculas antes de enviar a la BD
+            val upperName = warehouse.name.trim().uppercase()
+            val warehouseToUpdate = warehouse.copy(name = upperName)
+
+            repository.updateWarehouse(warehouseId, warehouseToUpdate).fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(
                         showEditDialog = false,
@@ -126,9 +130,13 @@ class WarehousesViewModel(
         }
     }
 
+    // --- CAMBIO 2: GENERAR NUEVO (Nombre a Mayúsculas) ---
     fun generateNewWarehouse(name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            // Convertimos el nombre entrante a mayúsculas
+            val upperName = name.trim().uppercase()
 
             val currentType = _uiState.value.selectedType
             val nextLocation = _uiState.value.nextAvailableLocation
@@ -142,19 +150,17 @@ class WarehousesViewModel(
             }
 
             val (level, itemNumber) = nextLocation
-
             val warehouseId = UUID.randomUUID().toString()
-            // generateCode usa la lógica del modelo: Item + Nivel
             val code = Warehouse.generateCode(level, itemNumber)
 
             val warehouse = Warehouse(
                 id = warehouseId,
                 code = code,
-                name = name,
+                name = upperName, // Usamos el nombre en mayúsculas
                 type = currentType,
                 levelNumber = level,
                 itemNumber = itemNumber,
-                createdBy = "Admin" // Puedes conectar esto con AuthViewModel si lo deseas luego
+                createdBy = "Admin"
             )
 
             createWarehouse(warehouse)
@@ -165,18 +171,11 @@ class WarehousesViewModel(
         val currentType = _uiState.value.selectedType
         val warehousesOfType = _uiState.value.warehouses.filter { it.type == currentType }
 
-        // Bucle Principal: Estantes/Items (1 al 30)
-        // Llenamos el Estante 1 completo (todos sus niveles) antes de pasar al Estante 2
         for (itemNumber in 1..Warehouse.MAX_ITEMS_PER_LEVEL) {
-
-            // Bucle Secundario: Niveles (1 al 10)
             for (level in 1..Warehouse.MAX_LEVELS) {
-
-                // Verificamos si existe un almacén con este item Y este nivel
                 val exists = warehousesOfType.any {
                     it.itemNumber == itemNumber && it.levelNumber == level
                 }
-
                 if (!exists) {
                     _uiState.value = _uiState.value.copy(
                         nextAvailableLocation = Pair(level, itemNumber)
@@ -185,7 +184,6 @@ class WarehousesViewModel(
                 }
             }
         }
-
         _uiState.value = _uiState.value.copy(nextAvailableLocation = null)
     }
 
@@ -232,7 +230,6 @@ class WarehousesViewModel(
     }
 }
 
-// --- FACTORY INCLUIDA AQUÍ ---
 class WarehousesViewModelFactory(private val repository: WarehouseRepository) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WarehousesViewModel::class.java)) {

@@ -37,7 +37,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.codemanager.data.repository.AuthRepository
 import com.example.codemanager.ui.auth.AuthViewModel
-import com.example.codemanager.ui.auth.AuthViewModelFactory
+import com.example.codemanager.ui.auth.AuthViewModelFactory // <--- ¡ESTE IMPORT FALTABA!
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,6 +50,7 @@ import java.net.URL
 @Composable
 fun DashboardScreen(
     onLogout: () -> Unit,
+    // Ahora sí reconocerá el AuthViewModelFactory gracias al import de arriba
     authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(AuthRepository()))
 ) {
     val currentUser by authViewModel.currentUser.collectAsState()

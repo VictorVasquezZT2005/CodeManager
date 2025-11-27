@@ -1,6 +1,7 @@
 package com.example.codemanager.ui.auth
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.codemanager.data.model.User
 import com.example.codemanager.data.repository.AuthRepository
@@ -16,14 +17,14 @@ class AuthViewModel(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
-    // Cambia esto de MutableStateFlow a StateFlow para exposición pública
     private val _currentUser = MutableStateFlow<User?>(null)
-    val currentUser: StateFlow<User?> = _currentUser.asStateFlow()  // ✅ Cambiado a StateFlow
+    val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
     init {
         loadCurrentUser()
     }
 
+    // --- Login Fields ---
     fun onEmailChange(email: String) {
         _uiState.value = _uiState.value.copy(
             email = email,
@@ -37,6 +38,27 @@ class AuthViewModel(
             passwordError = null
         )
     }
+
+    // --- Reset Password Fields ---
+    fun onResetEmailChange(email: String) {
+        _uiState.value = _uiState.value.copy(resetEmail = email)
+    }
+
+    fun showResetDialog() {
+        // Pre-llenamos el correo de recuperación si el usuario ya lo escribió en el login
+        _uiState.value = _uiState.value.copy(
+            showResetDialog = true,
+            resetEmail = _uiState.value.email,
+            resetMessage = null,
+            resetError = null
+        )
+    }
+
+    fun hideResetDialog() {
+        _uiState.value = _uiState.value.copy(showResetDialog = false)
+    }
+
+    // --- ACTIONS ---
 
     fun login() {
         val currentState = _uiState.value
@@ -89,6 +111,32 @@ class AuthViewModel(
         }
     }
 
+    fun sendResetPasswordEmail() {
+        val email = _uiState.value.resetEmail
+        if (!isValidEmail(email)) {
+            _uiState.value = _uiState.value.copy(resetError = "Ingresa un correo válido")
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(resetLoading = true, resetError = null, resetMessage = null)
+
+        viewModelScope.launch {
+            val result = authRepository.sendPasswordResetEmail(email)
+            if (result.isSuccess) {
+                _uiState.value = _uiState.value.copy(
+                    resetLoading = false,
+                    resetMessage = "Se ha enviado un correo de recuperación a $email",
+                    resetError = null
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    resetLoading = false,
+                    resetError = result.exceptionOrNull()?.message ?: "Error al enviar correo"
+                )
+            }
+        }
+    }
+
     private fun loadCurrentUser() {
         viewModelScope.launch {
             _currentUser.value = authRepository.getCurrentUser()
@@ -121,6 +169,7 @@ class AuthViewModel(
     }
 }
 
+// --- STATE ---
 data class LoginUiState(
     val email: String = "",
     val password: String = "",
@@ -128,5 +177,25 @@ data class LoginUiState(
     val isAuthenticated: Boolean = false,
     val emailError: String? = null,
     val passwordError: String? = null,
-    val error: String? = null
+    val error: String? = null,
+
+    // Estados para Reset Password
+    val showResetDialog: Boolean = false,
+    val resetEmail: String = "",
+    val resetLoading: Boolean = false,
+    val resetMessage: String? = null,
+    val resetError: String? = null
 )
+
+// --- FACTORY (Incluida aquí como pediste) ---
+class AuthViewModelFactory(
+    private val authRepository: AuthRepository
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(AuthViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return AuthViewModel(authRepository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}

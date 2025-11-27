@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.codemanager.data.model.Category
 import com.example.codemanager.data.repository.CategoryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -44,11 +43,18 @@ class CategoriesViewModel(private val repository: CategoryRepository) : ViewMode
         }
     }
 
+    // --- CREAR CATEGORÍA (Solo nombre en mayúsculas) ---
     fun createCategory(name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
+
+            // APLICAMOS MAYÚSCULAS SOLO AL NOMBRE
+            val upperName = name.trim().uppercase()
             val type = _uiState.value.selectedType
-            val result = repository.createCategory(name, type)
+
+            // Enviamos upperName al repositorio
+            val result = repository.createCategory(upperName, type)
+
             _uiState.value = _uiState.value.copy(isLoading = false)
 
             if (result.isSuccess) {
@@ -59,10 +65,20 @@ class CategoriesViewModel(private val repository: CategoryRepository) : ViewMode
         }
     }
 
+    // --- ACTUALIZAR CATEGORÍA (Solo nombre en mayúsculas) ---
     fun updateCategory(id: String, name: String) {
         viewModelScope.launch {
-            val result = repository.updateCategory(id, name, _uiState.value.selectedType)
-            if (result.isSuccess) _message.value = "Categoría actualizada"
+            // APLICAMOS MAYÚSCULAS SOLO AL NOMBRE
+            val upperName = name.trim().uppercase()
+
+            // Enviamos upperName al repositorio
+            val result = repository.updateCategory(id, upperName, _uiState.value.selectedType)
+
+            if (result.isSuccess) {
+                _message.value = "Categoría actualizada"
+            } else {
+                _message.value = "Error al actualizar: ${result.exceptionOrNull()?.message}"
+            }
         }
     }
 
