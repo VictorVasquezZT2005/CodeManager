@@ -15,7 +15,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.9" // <--- Esta es la versión que leerá el Dashboard
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -39,9 +39,14 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+    // --- AQUÍ ESTÁ EL CAMBIO IMPORTANTE ---
     buildFeatures {
         compose = true
+        buildConfig = true // Habilita la generación de la clase BuildConfig
     }
+    // --------------------------------------
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
@@ -53,6 +58,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.core:core-ktx:1.12.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

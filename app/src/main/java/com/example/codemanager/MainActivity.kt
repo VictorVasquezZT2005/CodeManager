@@ -1,5 +1,9 @@
 package com.example.codemanager
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,7 +25,7 @@ import androidx.navigation.compose.rememberNavController
 // Repositorios
 import com.example.codemanager.data.repository.AuthRepository
 import com.example.codemanager.data.repository.CodeRepository
-import com.example.codemanager.data.repository.CategoryRepository // <-- Actualizado
+import com.example.codemanager.data.repository.CategoryRepository
 import com.example.codemanager.data.repository.WarehouseRepository
 // Auth
 import com.example.codemanager.ui.auth.AuthViewModel
@@ -52,7 +56,7 @@ class MainActivity : ComponentActivity() {
     // 1. Instancias Lazy de los repositorios
     private val authRepository by lazy { AuthRepository() }
     private val codeRepository by lazy { CodeRepository() }
-    private val categoryRepository by lazy { CategoryRepository() } // <-- Renombrado
+    private val categoryRepository by lazy { CategoryRepository() }
     private val warehouseRepository by lazy { WarehouseRepository() }
 
     // 2. AuthViewModel
@@ -63,14 +67,34 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // --- IMPORTANTE: CREAR CANAL DE NOTIFICACIONES ---
+        // Esto es necesario para que las notificaciones de actualización se muestren
+        createNotificationChannel()
+
         setContent {
             CodeManagerApp(
                 authViewModel = authViewModel,
                 authRepository = authRepository,
                 codeRepository = codeRepository,
-                categoryRepository = categoryRepository, // <-- Actualizado
+                categoryRepository = categoryRepository,
                 warehouseRepository = warehouseRepository
             )
+        }
+    }
+
+    // Función para registrar el canal en el sistema
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Actualizaciones"
+            val descriptionText = "Notificaciones de nuevas versiones disponibles"
+            val importance = NotificationManager.IMPORTANCE_HIGH // Alta para que suene y vibre
+            val channel = NotificationChannel("updates_channel", name, importance).apply {
+                description = descriptionText
+            }
+            // Registrar el canal en el sistema
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
         }
     }
 }
@@ -80,7 +104,7 @@ fun CodeManagerApp(
     authViewModel: AuthViewModel,
     authRepository: AuthRepository,
     codeRepository: CodeRepository,
-    categoryRepository: CategoryRepository, // <-- Actualizado tipo
+    categoryRepository: CategoryRepository,
     warehouseRepository: WarehouseRepository
 ) {
     val uiState by authViewModel.uiState.collectAsState()
@@ -129,8 +153,6 @@ fun CodeManagerApp(
                         }
 
                         // --- CATEGORÍAS (ANTES GRUPOS) ---
-                        // Mantenemos la ruta "groups" si tu NavBar la usa,
-                        // pero cargamos la pantalla de Categorías
                         composable("groups") {
                             val categoriesViewModel: CategoriesViewModel = viewModel(
                                 factory = CategoriesViewModelFactory(categoryRepository)
