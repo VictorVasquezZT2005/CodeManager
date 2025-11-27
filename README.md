@@ -1,7 +1,3 @@
-Aquí tienes un README.md profesional y completo, adaptado específicamente para el Hospital Profamilia y el Área de Digitación, documentando todas las funcionalidades y reglas de negocio que hemos implementado.
-
-Puedes copiar y pegar este contenido en el archivo README.md de tu proyecto.
-
 Code Manager - Hospital Profamilia 🏥
 Departamento: Área de Digitación
 
