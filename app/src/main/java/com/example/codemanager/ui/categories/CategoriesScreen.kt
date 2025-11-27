@@ -1,5 +1,7 @@
 package com.example.codemanager.ui.categories
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,9 +11,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.codemanager.R // Importante para acceder a tus drawables
 import com.example.codemanager.data.model.Category
 import com.example.codemanager.data.repository.CategoryRepository
 import kotlinx.coroutines.delay
@@ -23,6 +28,7 @@ fun CategoriesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val message by viewModel.message.collectAsState()
+    val context = LocalContext.current
 
     val isMed = uiState.selectedType == "MED"
     val subTitle = if (isMed) "Medicamentos" else "Descartables"
@@ -33,6 +39,20 @@ fun CategoriesScreen(
     var currentCategory by remember { mutableStateOf<Category?>(null) }
     var categoryName by remember { mutableStateOf("") }
 
+    // --- LAUNCHERS ---
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        uri?.let { viewModel.exportData(context, it) }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { viewModel.importData(context, it) }
+    }
+    // -----------------
+
     LaunchedEffect(message) {
         if (message != null) {
             delay(3000)
@@ -40,7 +60,6 @@ fun CategoriesScreen(
         }
     }
 
-    // Dialogo único para Crear/Editar
     if (showDialog) {
         CategoryDialog(
             title = if (isEditing) "Editar $itemLabel" else "Nueva $itemLabel",
@@ -61,11 +80,49 @@ fun CategoriesScreen(
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            Text("Gestión de Categorías", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+
+            // --- HEADER CON ICONOS PERSONALIZADOS ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Categorías",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Exportar (Tu icono personalizado)
+                IconButton(onClick = {
+                    val fileName = "Categorias_${uiState.selectedType}.csv"
+                    exportLauncher.launch(fileName)
+                }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.file_export_solid_full),
+                        contentDescription = "Exportar",
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Importar (Tu icono personalizado)
+                IconButton(onClick = {
+                    importLauncher.launch(arrayOf("text/comma-separated-values", "text/csv", "text/plain"))
+                }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.file_import_solid_full),
+                        contentDescription = "Importar",
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            // ----------------------------------------
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Selectores (Chips)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = isMed,
@@ -83,7 +140,6 @@ fun CategoriesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botón Crear
             Button(
                 onClick = {
                     isEditing = false
@@ -99,6 +155,7 @@ fun CategoriesScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+
             if (message != null) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Text(message!!, modifier = Modifier.padding(16.dp))
@@ -106,7 +163,6 @@ fun CategoriesScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Lista
             if (uiState.isLoading) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (uiState.categories.isNotEmpty()) {
@@ -133,8 +189,6 @@ fun CategoriesScreen(
         }
     }
 }
-
-// --- COMPONENTES REUTILIZABLES ---
 
 @Composable
 fun CategoryDialog(

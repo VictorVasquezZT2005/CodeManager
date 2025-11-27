@@ -87,7 +87,6 @@ class CodeRepository {
     suspend fun generateStandardCode(prefix: String, description: String, createdBy: String): Result<Code> {
         return try {
             val nextSequence = getNextSequence(prefix)
-            // Mantenemos 5 dígitos para códigos simples (o cámbialo a 4 si prefieres)
             val formattedSequence = nextSequence.toString().padStart(5, '0')
             val fullCode = "$prefix-$formattedSequence"
 
@@ -104,31 +103,21 @@ class CodeRepository {
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    // --- CÓDIGO COMPUESTO (MEDICAMENTOS / DESCARTABLES) ---
+    // --- CÓDIGO COMPUESTO ---
     suspend fun generateCompositeCode(
-        rootPrefix: String,   // "00" o "01"
+        rootPrefix: String,
         category: Category,
         warehouse: Warehouse,
         description: String,
         createdBy: String,
-        internalPrefix: String // "MED" o "DESC"
+        internalPrefix: String
     ): Result<Code> {
         return try {
-            // LÓGICA ACTUALIZADA:
-            // La secuencia depende SOLO de "Tipo-Categoria" (ej: 00-01).
-            // Ignoramos el almacén para el conteo.
             val sequenceKey = "$rootPrefix-${category.code}"
-
             val nextSequence = getNextSequence(sequenceKey)
-
             val formattedCategory = category.code.padStart(2, '0')
             val formattedWarehouse = warehouse.code
-
-            // LÓGICA ACTUALIZADA:
-            // 4 Dígitos al final (0001)
             val formattedSequence = nextSequence.toString().padStart(4, '0')
-
-            // Armamos: 00-01-0101-0001
             val fullCode = "$rootPrefix-$formattedCategory-$formattedWarehouse-$formattedSequence"
 
             saveCode(
@@ -142,6 +131,17 @@ class CodeRepository {
                 createdBy = createdBy
             )
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    // --- IMPORTAR CÓDIGO (ESTA ES LA FUNCIÓN QUE FALTABA) ---
+    suspend fun importCode(code: Code): Result<Boolean> {
+        return try {
+            // Guardamos o sobrescribimos el código
+            codesCollection.document(code.id).set(code).await()
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     private suspend fun saveCode(

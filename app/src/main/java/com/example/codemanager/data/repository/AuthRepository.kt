@@ -1,18 +1,17 @@
 package com.example.codemanager.data.repository
 
 import com.example.codemanager.data.model.User
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.tasks.await
 import java.lang.Exception
 
 class AuthRepository {
 
-    private val auth: FirebaseAuth = Firebase.auth
-    private val db: FirebaseFirestore = Firebase.firestore
+    // CORRECCIÓN: Usamos getInstance() en lugar de Firebase.auth para evitar el error de KTX
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
 
     // Iniciar sesión
     suspend fun signIn(email: String, password: String): Result<Unit> {
@@ -67,10 +66,29 @@ class AuthRepository {
         }
     }
 
+    // --- MODIFICADO: Crear usuario sin cerrar sesión del Admin ---
     suspend fun createUser(email: String, password: String, name: String, rol: String): Result<User> {
         return try {
-            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-            val userId = authResult.user?.uid ?: throw Exception("Error al crear usuario")
+            // 1. Obtenemos la configuración de la App actual usando getInstance()
+            val mainApp = FirebaseApp.getInstance()
+            val options = mainApp.options
+
+            // 2. Definimos un nombre para la app secundaria
+            val secondaryAppName = "SecondaryAuthApp"
+
+            // 3. Inicializamos (o recuperamos) la App Secundaria
+            val secondaryApp = try {
+                FirebaseApp.getInstance(secondaryAppName)
+            } catch (e: IllegalStateException) {
+                FirebaseApp.initializeApp(mainApp.applicationContext, options, secondaryAppName)
+            }
+
+            // 4. Obtenemos la instancia de Auth específica de esa App Secundaria
+            val secondaryAuth = FirebaseAuth.getInstance(secondaryApp)
+
+            // 5. Creamos el usuario en la instancia secundaria
+            val authResult = secondaryAuth.createUserWithEmailAndPassword(email, password).await()
+            val userId = authResult.user?.uid ?: throw Exception("Error al crear usuario en Auth")
 
             val newUser = User(
                 id = userId,
@@ -79,9 +97,15 @@ class AuthRepository {
                 rol = rol
             )
 
+            // 6. Guardamos en Firestore usando 'db' (la instancia PRINCIPAL del Admin)
             db.collection("users").document(userId).set(newUser).await()
+
+            // 7. Cerramos sesión en la instancia secundaria para limpiar
+            secondaryAuth.signOut()
+
             Result.success(newUser)
         } catch (e: Exception) {
+            e.printStackTrace()
             Result.failure(e)
         }
     }
@@ -109,13 +133,13 @@ class AuthRepository {
             }
 
             db.collection("users").document(userId).delete().await()
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    // --- NUEVO: Enviar correo de restablecimiento ---
     suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
         return try {
             auth.sendPasswordResetEmail(email).await()

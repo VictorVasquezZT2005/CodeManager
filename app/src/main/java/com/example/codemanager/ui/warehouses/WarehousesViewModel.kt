@@ -60,8 +60,6 @@ class WarehousesViewModel(
         }
     }
 
-    // Esta función recibe el objeto ya listo, pero por seguridad,
-    // la conversión principal se hace en generateNewWarehouse
     fun createWarehouse(warehouse: Warehouse) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
@@ -81,12 +79,11 @@ class WarehousesViewModel(
         }
     }
 
-    // --- CAMBIO 1: ACTUALIZAR (Nombre a Mayúsculas) ---
+    // --- ACTUALIZAR (Nombre a Mayúsculas) ---
     fun updateWarehouse(warehouseId: String, warehouse: Warehouse) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            // Aseguramos mayúsculas antes de enviar a la BD
             val upperName = warehouse.name.trim().uppercase()
             val warehouseToUpdate = warehouse.copy(name = upperName)
 
@@ -130,21 +127,19 @@ class WarehousesViewModel(
         }
     }
 
-    // --- CAMBIO 2: GENERAR NUEVO (Nombre a Mayúsculas) ---
+    // --- GENERAR UNICO (Nombre a Mayúsculas) ---
     fun generateNewWarehouse(name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            // Convertimos el nombre entrante a mayúsculas
             val upperName = name.trim().uppercase()
-
             val currentType = _uiState.value.selectedType
             val nextLocation = _uiState.value.nextAvailableLocation
 
             if (nextLocation == null) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = "No hay ubicaciones disponibles para ${Warehouse.getTypeDisplayName(currentType)}"
+                    error = "No hay ubicaciones disponibles"
                 )
                 return@launch
             }
@@ -156,7 +151,7 @@ class WarehousesViewModel(
             val warehouse = Warehouse(
                 id = warehouseId,
                 code = code,
-                name = upperName, // Usamos el nombre en mayúsculas
+                name = upperName,
                 type = currentType,
                 levelNumber = level,
                 itemNumber = itemNumber,
@@ -166,6 +161,71 @@ class WarehousesViewModel(
             createWarehouse(warehouse)
         }
     }
+
+    // --- GENERAR TODO MASIVAMENTE (Batch) ---
+    fun generateAllRemainingWarehouses() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+            val currentType = _uiState.value.selectedType
+            val existingWarehouses = _uiState.value.warehouses.filter { it.type == currentType }
+
+            val newWarehouses = mutableListOf<Warehouse>()
+            val createdBy = "Admin (Masivo)"
+            val typeDisplayName = Warehouse.getTypeDisplayName(currentType).uppercase()
+
+            // Recorremos TODOS los posibles espacios (1..30 Items, 1..10 Niveles)
+            for (itemNumber in 1..Warehouse.MAX_ITEMS_PER_LEVEL) {
+                for (level in 1..Warehouse.MAX_LEVELS) {
+
+                    // Verificamos si ya existe esa combinación
+                    val exists = existingWarehouses.any {
+                        it.itemNumber == itemNumber && it.levelNumber == level
+                    }
+
+                    if (!exists) {
+                        val id = UUID.randomUUID().toString()
+                        val code = Warehouse.generateCode(level, itemNumber)
+                        // Nombre automático: EJ: "ESTANTE 0101"
+                        val name = "$typeDisplayName $code"
+
+                        newWarehouses.add(
+                            Warehouse(
+                                id = id,
+                                code = code,
+                                name = name,
+                                type = currentType,
+                                levelNumber = level,
+                                itemNumber = itemNumber,
+                                createdBy = createdBy
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (newWarehouses.isEmpty()) {
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                _message.value = "No hay espacios vacíos para llenar."
+                return@launch
+            }
+
+            // Enviamos el lote al repositorio
+            repository.createBatchWarehouses(newWarehouses).fold(
+                onSuccess = {
+                    _message.value = "Se crearon ${newWarehouses.size} registros exitosamente."
+                    loadWarehouses() // Recargamos la lista
+                },
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Error masivo: ${e.message}"
+                    )
+                }
+            )
+        }
+    }
+    // ---------------------------------------
 
     private fun calculateNextAvailableLocation() {
         val currentType = _uiState.value.selectedType
@@ -219,10 +279,6 @@ class WarehousesViewModel(
             showEditDialog = false,
             selectedWarehouse = null
         )
-    }
-
-    fun clearError() {
-        _uiState.value = _uiState.value.copy(error = null)
     }
 
     fun clearMessage() {

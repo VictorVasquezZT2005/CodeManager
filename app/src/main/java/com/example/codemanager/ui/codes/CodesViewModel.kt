@@ -1,5 +1,7 @@
 package com.example.codemanager.ui.codes
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -7,9 +9,12 @@ import com.example.codemanager.data.model.Code
 import com.example.codemanager.data.model.Category
 import com.example.codemanager.data.model.Warehouse
 import com.example.codemanager.data.repository.CodeRepository
-import kotlinx.coroutines.CoroutineScope
+import com.example.codemanager.utils.CsvUtils
+import kotlinx.coroutines.CoroutineScope // <--- ESTE IMPORT FALTABA
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class CodeType(val label: String, val prefix: String, val isComposite: Boolean) {
     EMERGENCY("Emergencia", "62", false),
@@ -103,22 +108,13 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
     fun setSelectedCategory(category: Category) { _selectedCategory.value = category }
     fun setSelectedWarehouse(warehouse: Warehouse) { _selectedWarehouse.value = warehouse }
 
-    // --- GENERAR CÓDIGO (Actualizado) ---
     fun generateCode(description: String, createdBy: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val type = _selectedType.value
 
-            // 1. Convertir TODO a mayúsculas
             val upperDescription = description.trim().uppercase()
-
-            // 2. Aplicar lógica de plecas (//) solo para Emergencia (62)
-            // Se usa la descripción ya convertida a mayúsculas
-            val finalDescription = if (type == CodeType.EMERGENCY) {
-                "// $upperDescription"
-            } else {
-                upperDescription
-            }
+            val finalDescription = if (type == CodeType.EMERGENCY) "// $upperDescription" else upperDescription
 
             val result = if (type.isComposite) {
                 val category = _selectedCategory.value
@@ -130,19 +126,15 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
                         rootPrefix = type.prefix,
                         category = category,
                         warehouse = warehouse,
-                        description = finalDescription, // Se envía en MAYÚSCULAS
+                        description = finalDescription,
                         createdBy = createdBy,
                         internalPrefix = internalPrefix
                     )
                 } else {
-                    Result.failure(Exception("Faltan datos (Categoría o Almacén)"))
+                    Result.failure(Exception("Faltan datos"))
                 }
             } else {
-                codeRepository.generateStandardCode(
-                    type.prefix,
-                    finalDescription, // Se envía en MAYÚSCULAS (y con // si es 62)
-                    createdBy
-                )
+                codeRepository.generateStandardCode(type.prefix, finalDescription, createdBy)
             }
 
             _uiState.value = _uiState.value.copy(isLoading = false)
@@ -155,6 +147,44 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
         }
     }
 
+    fun exportData(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val csvContent = CsvUtils.exportCodesToCsv(_uiState.value.filteredCodes)
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(csvContent.toByteArray())
+                }
+                withContext(Dispatchers.Main) { _message.value = "Exportado exitosamente" }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { _message.value = "Error exportando: ${e.message}" }
+            }
+        }
+    }
+
+    fun importData(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) { _uiState.value = _uiState.value.copy(isLoading = true) }
+            try {
+                val codes = CsvUtils.parseCodesFromCsv(context, uri)
+                var count = 0
+                codes.forEach { code ->
+                    codeRepository.importCode(code)
+                    count++
+                }
+                codeRepository.loadCodes()
+                withContext(Dispatchers.Main) {
+                    _message.value = "Importados $count códigos"
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _message.value = "Error importando: ${e.message}"
+                }
+            }
+        }
+    }
+
     fun deleteCode(id: String) {
         viewModelScope.launch { codeRepository.deleteCode(id) }
     }
@@ -162,7 +192,6 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
     fun clearMessage() { _message.value = null }
 }
 
-// Helpers
 fun <T1, T2, R> Flow<T1>.combine(flow: Flow<T2>, transform: suspend (T1, T2) -> R): Flow<R> = kotlinx.coroutines.flow.combine(this, flow, transform)
 fun <T> Flow<T>.asStateFlow(scope: CoroutineScope, initialValue: T): StateFlow<T> = this.stateIn(scope, SharingStarted.WhileSubscribed(5000), initialValue)
 

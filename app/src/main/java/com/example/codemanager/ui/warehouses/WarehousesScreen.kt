@@ -13,19 +13,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.codemanager.data.model.Warehouse // <-- Importación del Modelo unificado
+import com.example.codemanager.data.model.Warehouse
 import com.example.codemanager.data.repository.WarehouseRepository
 
-@OptIn(ExperimentalMaterial3Api::class) // Necesario para FilterChip y Cards
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WarehousesScreen(
-    // Inyectamos el repositorio a través de la Factory
     viewModel: WarehousesViewModel = viewModel(factory = WarehousesViewModelFactory(WarehouseRepository()))
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val message by viewModel.message.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var showBulkConfirmDialog by remember { mutableStateOf(false) }
 
     // Manejo de mensajes temporales
     LaunchedEffect(message) {
@@ -45,6 +45,33 @@ fun WarehousesScreen(
             onConfirm = { name ->
                 viewModel.generateNewWarehouse(name)
                 showAddDialog = false
+            }
+        )
+    }
+
+    if (showBulkConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showBulkConfirmDialog = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("¿Llenar todos los espacios?") },
+            text = {
+                val typeName = Warehouse.getTypeDisplayName(uiState.selectedType)
+                Text("Esta acción creará automáticamente todos los $typeName faltantes hasta completar la capacidad máxima (300 items).\n\nEsto puede generar muchos registros de una sola vez.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBulkConfirmDialog = false
+                        viewModel.generateAllRemainingWarehouses()
+                    }
+                ) {
+                    Text("Confirmar Llenado")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBulkConfirmDialog = false }) {
+                    Text("Cancelar")
+                }
             }
         )
     }
@@ -84,27 +111,45 @@ fun WarehousesScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botón Agregar
-            Button(
-                onClick = { showAddDialog = true },
+            // --- BOTONERA ---
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                // Solo habilitado si no está cargando y si el sistema calculó una ubicación libre
-                enabled = !uiState.isLoading && uiState.nextAvailableLocation != null,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
+                // Botón Agregar Individual
+                Button(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier.weight(1f),
+                    enabled = !uiState.isLoading && uiState.nextAvailableLocation != null,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cargando...")
-                } else {
-                    Icon(Icons.Default.Add, contentDescription = "Agregar")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Agregar ${Warehouse.getTypeDisplayName(uiState.selectedType)}")
+                ) {
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Icon(Icons.Default.Add, contentDescription = "Agregar")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Nuevo")
+                    }
+                }
+
+                // Botón Llenar Todo (Masivo)
+                OutlinedButton(
+                    onClick = { showBulkConfirmDialog = true },
+                    modifier = Modifier.weight(1f),
+                    enabled = !uiState.isLoading && uiState.nextAvailableLocation != null,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    // Usamos PlaylistAdd que es común, o AutoMode si tienes las dependencias extendidas
+                    Icon(Icons.Default.PlaylistAdd, contentDescription = "Llenar Todo")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Llenar Todo")
                 }
             }
 
@@ -113,7 +158,7 @@ fun WarehousesScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                     Text(
-                        text = "⚠️ No hay espacios disponibles. Se han llenado todos los niveles y estantes.",
+                        text = "⚠️ Almacenamiento lleno. No hay ubicaciones disponibles.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.padding(8.dp)
@@ -236,7 +281,6 @@ fun WarehouseItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    // Muestra: "Estante 0102"
                     Text(
                         text = warehouse.getDisplayCode(),
                         style = MaterialTheme.typography.titleMedium,
@@ -250,7 +294,6 @@ fun WarehouseItem(
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    // Muestra: "Estante 01 - Nivel 02"
                     Text(
                         text = warehouse.getFormattedLocation(),
                         style = MaterialTheme.typography.bodySmall,
@@ -274,7 +317,7 @@ fun WarehouseItem(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Eliminar Almacén") },
-            text = { Text("¿Estás seguro? Esto no eliminará los códigos asociados, pero perderás la referencia de ubicación.") },
+            text = { Text("¿Estás seguro? Se eliminará la referencia de ubicación.") },
             confirmButton = {
                 Button(
                     onClick = { onDelete(); showDeleteDialog = false },
@@ -293,7 +336,7 @@ fun WarehouseItem(
 @Composable
 fun AddWarehouseDialog(
     selectedType: String,
-    nextLocation: Pair<Int, Int>?, // Pair(Level, Item)
+    nextLocation: Pair<Int, Int>?,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
@@ -315,7 +358,6 @@ fun AddWarehouseDialog(
 
                 if (nextLocation != null) {
                     val (level, itemNumber) = nextLocation
-                    // Usamos la lógica del modelo: generateCode(level, item)
                     val nextCode = Warehouse.generateCode(level, itemNumber)
 
                     Card(
@@ -332,7 +374,6 @@ fun AddWarehouseDialog(
                             )
                             Divider(color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 8.dp))
 
-                            // Desglose Visual
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Column {
                                     Text("Identificador", style = MaterialTheme.typography.labelSmall)

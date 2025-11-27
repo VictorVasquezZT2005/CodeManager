@@ -1,22 +1,25 @@
 package com.example.codemanager.ui.codes
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.codemanager.R
 import com.example.codemanager.data.model.Code
-import com.example.codemanager.data.model.Category // <-- Importación Actualizada
+import com.example.codemanager.data.model.Category
 import com.example.codemanager.data.model.Warehouse
 import com.example.codemanager.data.repository.CodeRepository
 import com.example.codemanager.ui.auth.AuthViewModel
@@ -34,19 +37,24 @@ fun CodesScreen(
     val selectedType by viewModel.selectedType.collectAsState()
     val message by viewModel.message.collectAsState()
 
-    // --- CAMBIO: Ahora observamos categorías filtradas ---
+    val context = LocalContext.current
     val categories by viewModel.filteredCategoriesForSelection.collectAsState()
     val warehouses by viewModel.filteredWarehousesForSelection.collectAsState()
-
     val warehouseTypeFilter by viewModel.warehouseTypeFilter.collectAsState()
-
-    // --- CAMBIO: selectedCategory en lugar de selectedGroup ---
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val selectedWarehouse by viewModel.selectedWarehouse.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
 
     var showGenerateDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri -> uri?.let { viewModel.exportData(context, it) } }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { viewModel.importData(context, it) } }
 
     LaunchedEffect(message) {
         if (message != null) {
@@ -58,13 +66,13 @@ fun CodesScreen(
     if (showGenerateDialog) {
         GenerateCodeDialog(
             codeType = selectedType,
-            categories = categories, // Pasamos categorías
+            categories = categories,
             warehouses = warehouses,
-            selectedCategory = selectedCategory, // Pasamos selección
+            selectedCategory = selectedCategory,
             selectedWarehouse = selectedWarehouse,
             warehouseTypeFilter = warehouseTypeFilter,
             onWarehouseTypeFilterChange = viewModel::setWarehouseTypeFilter,
-            onCategorySelected = viewModel::setSelectedCategory, // Acción actualizada
+            onCategorySelected = viewModel::setSelectedCategory,
             onWarehouseSelected = viewModel::setSelectedWarehouse,
             onConfirm = { description ->
                 val userName = currentUser?.name ?: "Usuario Desconocido"
@@ -84,18 +92,49 @@ fun CodesScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            Text(
-                text = "Gestión de Códigos",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
+            // --- HEADER CON ICONOS PERSONALIZADOS ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Gestión de Códigos",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Exportar
+                IconButton(onClick = {
+                    val fileName = "Codigos_${selectedType.prefix}.csv"
+                    exportLauncher.launch(fileName)
+                }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.file_export_solid_full),
+                        contentDescription = "Exportar",
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Importar
+                IconButton(onClick = {
+                    importLauncher.launch(arrayOf("text/*", "text/csv"))
+                }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.file_import_solid_full),
+                        contentDescription = "Importar",
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            // ----------------------------------------
+
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = "Seleccionar Categoría:",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
+            Text(text = "Seleccionar Categoría:", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -130,11 +169,7 @@ fun CodesScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             if (uiState.filteredCodes.isNotEmpty()) {
-                Text(
-                    text = "${selectedType.label} (${uiState.filteredCodes.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Text(text = "${selectedType.label} (${uiState.filteredCodes.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(uiState.filteredCodes, key = { it.id }) { code ->
@@ -152,6 +187,8 @@ fun CodesScreen(
     }
 }
 
+// ... Mantén el resto de componentes (TypeFilterChip, GenerateCodeDialog, etc.) abajo ...
+// (Son los mismos que en el mensaje anterior, no han cambiado).
 @Composable
 fun TypeFilterChip(type: CodeType, selectedType: CodeType, onSelect: (CodeType) -> Unit) {
     FilterChip(
@@ -166,13 +203,13 @@ fun TypeFilterChip(type: CodeType, selectedType: CodeType, onSelect: (CodeType) 
 @Composable
 fun GenerateCodeDialog(
     codeType: CodeType,
-    categories: List<Category>, // <-- Lista de Categorías
+    categories: List<Category>,
     warehouses: List<Warehouse>,
-    selectedCategory: Category?, // <-- Selección de Categoría
+    selectedCategory: Category?,
     selectedWarehouse: Warehouse?,
     warehouseTypeFilter: String,
     onWarehouseTypeFilterChange: (String) -> Unit,
-    onCategorySelected: (Category) -> Unit, // <-- Callback
+    onCategorySelected: (Category) -> Unit,
     onWarehouseSelected: (Warehouse) -> Unit,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
@@ -198,7 +235,6 @@ fun GenerateCodeDialog(
                     Text("Configuración:", style = MaterialTheme.typography.labelLarge)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 1. Categoría (Medicamento o Descartable)
                     val catLabel = if (codeType == CodeType.MEDICINES) "Categoría (Medicamentos)" else "Categoría (Descartables)"
                     ExposedDropdownItem(
                         label = catLabel,
@@ -210,7 +246,6 @@ fun GenerateCodeDialog(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Selector Tipo Almacén
                     Text("Tipo de Almacén:", style = MaterialTheme.typography.labelMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -229,7 +264,6 @@ fun GenerateCodeDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 2. Almacén
                     ExposedDropdownItem(
                         label = "Seleccionar ${if(warehouseTypeFilter == "estante") "Estante" else "Refrigerador"}",
                         options = warehouses,

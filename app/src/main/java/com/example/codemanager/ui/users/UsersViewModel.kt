@@ -1,6 +1,7 @@
 package com.example.codemanager.ui.users
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.codemanager.data.model.User
 import com.example.codemanager.data.repository.AuthRepository
@@ -12,6 +13,8 @@ import kotlinx.coroutines.launch
 class UsersViewModel(
     private val authRepository: AuthRepository
 ) : ViewModel() {
+
+    // --- ESTADOS ---
 
     // Lista completa (Base de datos)
     private val _allUsers = MutableStateFlow<List<User>>(emptyList())
@@ -54,6 +57,8 @@ class UsersViewModel(
         loadUsersFromFirestore()
     }
 
+    // --- FUNCIONES DE CARGA Y FILTRO ---
+
     fun loadUsersFromFirestore() {
         _isLoading.value = true
         _errorMessage.value = null
@@ -82,6 +87,8 @@ class UsersViewModel(
         _filteredUsers.value = _allUsers.value.filter { it.rol == currentRole }
     }
 
+    // --- GESTIÓN DEL DIÁLOGO ---
+
     fun showAddUserDialog() {
         _editingUser.value = null
         _newUserName.value = ""
@@ -108,6 +115,8 @@ class UsersViewModel(
         _errorMessage.value = null
     }
 
+    // --- ACTUALIZACIÓN DE CAMPOS ---
+
     fun updateNewUserName(name: String) {
         _newUserName.value = name
     }
@@ -124,6 +133,8 @@ class UsersViewModel(
         _newUserRol.value = rol
     }
 
+    // --- OPERACIONES CRUD ---
+
     fun createUser() {
         if (_newUserEmail.value.isBlank() || _newUserPassword.value.isBlank() || _newUserName.value.isBlank()) {
             _errorMessage.value = "Todos los campos son requeridos"
@@ -137,6 +148,8 @@ class UsersViewModel(
         _isLoading.value = true
         viewModelScope.launch {
             try {
+                // NOTA: Asegúrate de que authRepository.createUser implemente la lógica
+                // de "SecondaryApp" para no cerrar la sesión del admin.
                 val result = authRepository.createUser(
                     email = _newUserEmail.value,
                     password = _newUserPassword.value,
@@ -209,5 +222,20 @@ class UsersViewModel(
 
     fun clearError() {
         _errorMessage.value = null
+    }
+}
+
+/**
+ * Factory para crear instancias de UsersViewModel con dependencias.
+ */
+class UsersViewModelFactory(
+    private val authRepository: AuthRepository
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(UsersViewModel::class.java)) {
+            return UsersViewModel(authRepository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

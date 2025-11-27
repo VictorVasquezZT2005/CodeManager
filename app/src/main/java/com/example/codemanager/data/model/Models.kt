@@ -1,26 +1,20 @@
 package com.example.codemanager.data.model
 
-// --- CODE ACTUALIZADO ---
-// Se agregaron los campos estructurales (rootPrefix, categoryCode, warehouseCode)
-// para que coincidan con la lógica del CodeRepository.
+// --- CODE (Actualizado con tus nuevos campos) ---
 data class Code(
     val id: String = "",
     val code: String = "",
-    val prefix: String = "",        // "MED", "DESC", "62", "70" (Filtros UI)
-
-    // --- NUEVOS CAMPOS REQUERIDOS POR EL REPOSITORIO ---
+    val prefix: String = "",        // "MED", "DESC", "62", "70"
     val rootPrefix: String = "",    // "00", "01"
     val categoryCode: String = "",  // "01"
     val warehouseCode: String = "", // "0101"
-    // ---------------------------------------------------
-
     val sequence: Int = 0,
     val description: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val createdBy: String = ""
 )
 
-// --- WAREHOUSE (Igual a tu versión, con toMap incluido) ---
+// --- WAREHOUSE ---
 data class Warehouse(
     val id: String = "",
     val code: String = "",
@@ -61,12 +55,12 @@ data class Warehouse(
     fun getDisplayCode(): String = "${getTypeDisplayName(type)} $code"
 }
 
-// --- CATEGORY (Igual a tu versión) ---
+// --- CATEGORY ---
 data class Category(
     val id: String = "",
-    val code: String = "",      // Ej: "01", "02"
-    val name: String = "",      // Ej: "Analgésicos"
+    val code: String = "",
+    val name: String = "",
     val sequence: Int = 0,
-    val type: String = "MED",   // "MED" o "DESC"
+    val type: String = "MED",
     val createdAt: Long = System.currentTimeMillis()
 )
