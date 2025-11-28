@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// 1. DEFINICIÓN DE CODETYPE
+// DEFINICIÓN DE CODETYPE
 enum class CodeType(val label: String, val prefix: String, val isComposite: Boolean) {
     EMERGENCY("Emergencia", "62", false),
     SERVICES("Servicios", "70", false),
@@ -38,12 +38,22 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
     private val _warehouseTypeFilter = MutableStateFlow("estante")
     val warehouseTypeFilter = _warehouseTypeFilter.asStateFlow()
 
+    // Para la creación de nuevos códigos (Diálogo)
     private val _selectedCategory = MutableStateFlow<Category?>(null)
     val selectedCategory = _selectedCategory.asStateFlow()
+
+    // --- NUEVOS ESTADOS PARA FILTROS Y BÚSQUEDA (LISTA PRINCIPAL) ---
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery = _searchQuery.asStateFlow()
+
+    private val _filterCategory = MutableStateFlow<Category?>(null)
+    val filterCategory = _filterCategory.asStateFlow()
+    // ---------------------------------------------------------------
 
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
 
+    // Lista de categorías válida para el TIPO seleccionado (sirve para el diálogo y para el filtro de lista)
     val filteredCategoriesForSelection = _categories.combine(_selectedType) { all, type ->
         val filterKey = if (type == CodeType.MEDICINES) "MED" else if (type == CodeType.DISPOSABLES) "DESC" else ""
         if (filterKey.isNotEmpty()) all.filter { it.type == filterKey } else emptyList()
@@ -71,22 +81,40 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
             codeRepository.loadCodes()
             codeRepository.codes.collect { codes ->
                 _uiState.value = _uiState.value.copy(codes = codes, isLoading = false)
-                filterCodes()
+                filterCodes() // Aplicar filtros al cargar
             }
         }
     }
 
+    // Al cambiar de pestaña (Tipo), reseteamos búsquedas y filtros
     fun selectType(type: CodeType) {
         _selectedType.value = type
-        _selectedCategory.value = null
+        _selectedCategory.value = null // Reset selección diálogo
+        _filterCategory.value = null   // Reset filtro categoría lista
+        _searchQuery.value = ""        // Reset búsqueda texto
         filterCodes()
     }
 
+    // --- MANEJO DE BÚSQUEDA Y FILTRO DE CATEGORÍA ---
+    fun onSearchQueryChanged(query: String) {
+        _searchQuery.value = query
+        filterCodes()
+    }
+
+    fun onFilterCategoryChanged(category: Category?) {
+        _filterCategory.value = category
+        filterCodes()
+    }
+
+    // LÓGICA CENTRAL DE FILTRADO
     private fun filterCodes() {
         val currentType = _selectedType.value
         val allCodes = _uiState.value.codes
+        val query = _searchQuery.value.trim()
+        val catFilter = _filterCategory.value
 
-        val filtered = allCodes.filter { code ->
+        // 1. Filtrar por TIPO (Pestaña)
+        var filtered = allCodes.filter { code ->
             when (currentType) {
                 CodeType.EMERGENCY -> code.prefix == "62" || code.rootPrefix == "62" || code.code.startsWith("62")
                 CodeType.SERVICES -> code.prefix == "70" || code.rootPrefix == "70" || code.code.startsWith("70")
@@ -94,6 +122,22 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
                 CodeType.DISPOSABLES -> code.rootPrefix == "01" || code.prefix == "DESC"
             }
         }
+
+        // 2. Filtrar por BÚSQUEDA (Descripción o Código)
+        if (query.isNotEmpty()) {
+            filtered = filtered.filter { code ->
+                code.description.contains(query, ignoreCase = true) ||
+                        code.code.contains(query, ignoreCase = true)
+            }
+        }
+
+        // 3. Filtrar por CATEGORÍA (Solo si es compuesto y hay una seleccionada)
+        if (currentType.isComposite && catFilter != null) {
+            filtered = filtered.filter { code ->
+                code.categoryCode == catFilter.code
+            }
+        }
+
         _uiState.value = _uiState.value.copy(filteredCodes = filtered)
     }
 
@@ -145,6 +189,7 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
 
             if (result.isSuccess) {
                 _message.value = "Código Creado: ${result.getOrNull()?.code}"
+                // No necesitamos llamar a loadCodes manual porque el repo actualiza y el flow emite
             } else {
                 _message.value = "Error: ${result.exceptionOrNull()?.message}"
             }
@@ -156,7 +201,6 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 codeRepository.updateCode(code)
-                codeRepository.loadCodes()
                 _message.value = "Código actualizado correctamente"
             } catch (e: Exception) {
                 _message.value = "Error al actualizar: ${e.message}"
@@ -180,41 +224,31 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
         }
     }
 
-    // --- IMPORTAR DATOS (CON VALIDACIÓN DE CATEGORÍA EXISTENTE) ---
     fun importData(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) { _uiState.value = _uiState.value.copy(isLoading = true) }
             try {
                 val parsedCodes = CsvUtils.parseCodesFromCsv(context, uri)
-
-                // 1. Cargamos códigos existentes para chequear duplicados
                 val existingCodeStrings = _uiState.value.codes.map { it.code }.toHashSet()
-
-                // 2. Cargamos los códigos de las CATEGORÍAS VÁLIDAS de la base de datos
-                // Esto nos permite saber si "05", "10", etc. existen realmente.
                 val validCategoryCodes = _categories.value.map { it.code }.toHashSet()
 
                 var importedCount = 0
                 var duplicateCount = 0
-                var unknownCategoryCount = 0 // Nuevo contador para errores de categoría
+                var unknownCategoryCount = 0
 
                 val maxSequences = mutableMapOf<String, Int>()
 
                 parsedCodes.forEach { code ->
-                    // A. Validación: ¿Ya existe el código?
                     if (existingCodeStrings.contains(code.code)) {
                         duplicateCount++
                         return@forEach
                     }
 
-                    // B. Validación: ¿Existe la categoría en BD?
-                    // Solo aplica si el código tiene una categoría asignada (no está vacía)
                     if (code.categoryCode.isNotEmpty() && !validCategoryCodes.contains(code.categoryCode)) {
                         unknownCategoryCount++
-                        return@forEach // Saltamos este código porque su categoría no existe
+                        return@forEach
                     }
 
-                    // Si pasa las validaciones, guardamos
                     codeRepository.importCode(code)
                     importedCount++
                     existingCodeStrings.add(code.code)
@@ -236,7 +270,6 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
                 codeRepository.loadCodes()
 
                 withContext(Dispatchers.Main) {
-                    // Construimos un mensaje detallado
                     val parts = mutableListOf("Importados: $importedCount")
                     if (duplicateCount > 0) parts.add("Duplicados omitidos: $duplicateCount")
                     if (unknownCategoryCount > 0) parts.add("Categorías desconocidas omitidas: $unknownCategoryCount")
