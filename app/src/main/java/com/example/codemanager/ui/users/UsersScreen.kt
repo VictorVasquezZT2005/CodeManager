@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -127,7 +128,6 @@ fun UsersScreen(
                     Icon(Icons.Default.PersonAdd, contentDescription = "Agregar usuario")
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                // El texto del botón confirma qué tipo de usuario se creará
                 Text("Agregar $selectedRole")
             }
 
@@ -190,14 +190,19 @@ fun UsersScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(users) { user ->
-                        // VERIFICACIÓN: ¿Es este el usuario actual?
                         val isCurrentUser = user.id == currentUser?.id
 
                         UserItem(
                             user = user,
                             isCurrentUser = isCurrentUser,
                             onEdit = { usersViewModel.showEditUserDialog(user) },
-                            onDelete = { usersViewModel.deleteUser(user) }
+                            onDelete = { usersViewModel.deleteUser(user) },
+                            onToggleRole = {
+                                // Determinamos el nuevo rol basándonos en el actual
+                                val newRole = if (user.rol == "Administrador") "Usuario" else "Administrador"
+                                // Llamamos a una función del ViewModel que actualice solo el rol
+                                usersViewModel.quickToggleRole(user, newRole)
+                            }
                         )
                     }
                 }
@@ -274,7 +279,8 @@ fun UserItem(
     user: User,
     isCurrentUser: Boolean,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleRole: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -290,7 +296,7 @@ fun UserItem(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     // Nombre
@@ -353,11 +359,20 @@ fun UserItem(
                     }
                 }
 
-                Row {
-                    IconButton(
-                        onClick = onEdit,
-                        modifier = Modifier.size(24.dp)
-                    ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // BOTÓN ESCUDO (Toggle de Rol)
+                    // Solo visible si no es el usuario actual (para no quitarse permisos a uno mismo)
+                    if (!isCurrentUser) {
+                        IconButton(onClick = onToggleRole) {
+                            Icon(
+                                imageVector = if (user.rol == "Administrador") Icons.Default.Shield else Icons.Outlined.Shield,
+                                contentDescription = "Cambiar Rol",
+                                tint = if (user.rol == "Administrador") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onEdit) {
                         Icon(
                             Icons.Default.Edit,
                             contentDescription = "Editar",
@@ -365,22 +380,15 @@ fun UserItem(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
-
                     // SOLO MOSTRAR ELIMINAR SI NO ES EL USUARIO ACTUAL
                     if (!isCurrentUser) {
-                        IconButton(
-                            onClick = onDelete,
-                            modifier = Modifier.size(24.dp)
-                        ) {
+                        IconButton(onClick = onDelete) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Eliminar",
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
-                    } else {
-                        Box(modifier = Modifier.size(24.dp))
                     }
                 }
             }
@@ -399,7 +407,6 @@ fun UserDialog(
     val name by viewModel.newUserName.collectAsState()
     val email by viewModel.newUserEmail.collectAsState()
     val password by viewModel.newUserPassword.collectAsState()
-    // Obtenemos el rol actual (que ya viene preconfigurado desde el ViewModel)
     val rol by viewModel.newUserRol.collectAsState()
 
     Dialog(onDismissRequest = onDismiss) {
@@ -463,8 +470,6 @@ fun UserDialog(
                     )
                 }
 
-                // --- SELECCIÓN DE ROL ELIMINADA ---
-                // Solo mostramos un texto informativo fijo
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Start,

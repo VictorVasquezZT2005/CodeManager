@@ -220,6 +220,35 @@ class UsersViewModel(
         }
     }
 
+    /**
+     * Alterna el rol del usuario de forma rápida (botón escudo)
+     */
+    fun quickToggleRole(user: User, newRole: String) {
+        _isLoading.value = true
+        _errorMessage.value = null
+        viewModelScope.launch {
+            try {
+                // Usamos la misma lógica de updateUser del repositorio
+                // pero solo enviando el nuevo rol y manteniendo el nombre actual
+                val result = authRepository.updateUser(
+                    userId = user.id,
+                    name = user.name,
+                    rol = newRole
+                )
+
+                if (result.isSuccess) {
+                    loadUsersFromFirestore() // Recargar para ver el cambio de lista
+                } else {
+                    _errorMessage.value = "Error al cambiar rol: ${result.exceptionOrNull()?.message}"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Error: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun clearError() {
         _errorMessage.value = null
     }
