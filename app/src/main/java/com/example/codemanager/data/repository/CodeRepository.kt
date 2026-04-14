@@ -99,7 +99,7 @@ class CodeRepository {
     suspend fun generateStandardCode(prefix: String, description: String, createdBy: String): Result<Code> {
         return try {
             val nextSequence = getNextSequence(prefix)
-            val formattedSequence = nextSequence.toString().padStart(5, '0')
+            val formattedSequence = nextSequence.toString().padStart(4, '0')
             val fullCode = "$prefix-$formattedSequence"
 
             saveCode(

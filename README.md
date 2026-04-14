@@ -118,3 +118,6 @@ Para problemas con la base de datos, usuarios bloqueados o nuevos requerimientos
 Área de Digitación - Hospital Profamilia
 
 Contacto Técnico: [vvasquezdv2016@gmail.com]
+
+📄 Licencia
+Este proyecto es propiedad exclusiva de **Hospital Profamilia**. Todos los derechos están reservados. El uso, copia o distribución de este software está restringido únicamente al personal autorizado del hospital.

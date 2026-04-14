@@ -158,7 +158,7 @@ class CodesViewModel(private val codeRepository: CodeRepository) : ViewModel() {
             }
 
             val upperDescription = cleanDesc.uppercase()
-            val finalDescription = if (type == CodeType.EMERGENCY) "// $upperDescription" else upperDescription
+            val finalDescription = if (type == CodeType.EMERGENCY) "//$upperDescription" else upperDescription
 
             val result = if (type.isComposite) {
                 if (category == null) {
